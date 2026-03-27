@@ -21,7 +21,13 @@
 
 // -----------------------------------------------------------------------------
 // UART objects
+// TODO: rename all of them to better indicate the direction
+//       of the receivers and transmitters with respect to 
+//       the robot body.
 // -----------------------------------------------------------------------------
+
+// To "rename" the built-in Serial1 for readability.
+Uart& uart1 = Serial1;
 
 // UART2: A4 TX / A1 RX  -> SERCOM0
 Uart SerialA4(&sercom0, PIN_A1, PIN_A4, SERCOM_RX_PAD_1, UART_TX_PAD_0);
@@ -36,46 +42,82 @@ Uart SerialSPI(&sercom1, PIN_SPI_SCK, PIN_SPI_MOSI, SERCOM_RX_PAD_1, UART_TX_PAD
 IRParser_c ir_parser[4] = { Serial1, SerialA4, SerialD12, SerialSPI };
 
 // -----------------------------------------------------------------------------
-// SERCOM IRQ handlers
+// Frame error counters
 // -----------------------------------------------------------------------------
-void SERCOM0_0_Handler() {
-  SerialA4.IrqHandler();
-}
-void SERCOM0_1_Handler() {
-  SerialA4.IrqHandler();
-}
-void SERCOM0_2_Handler() {
-  SerialA4.IrqHandler();
-}
-void SERCOM0_3_Handler() {
-  SerialA4.IrqHandler();
+//volatile uint32_t uart1_frame_errors = 0;   // Serial1 / SERCOM3
+volatile uint32_t SerialA4_frame_errors = 0;   // SerialA4 / SERCOM0
+volatile uint32_t SerialD12_frame_errors = 0;   // SerialD12 / SERCOM5
+volatile uint32_t SerialSPI_frame_errors = 0;   // SerialSPI / SERCOM1
+
+// -----------------------------------------------------------------------------
+// Helper: count frame error if present
+// We test STATUS.FERR directly on the raw CMSIS SERCOM peripheral.
+// -----------------------------------------------------------------------------
+static inline void countFrameError(Sercom *hw, volatile uint32_t &counter)
+{
+  if (hw->USART.INTFLAG.bit.ERROR && hw->USART.STATUS.bit.FERR) {
+    counter++;
+  }
 }
 
-void SERCOM1_0_Handler() {
-  SerialSPI.IrqHandler();
-}
-void SERCOM1_1_Handler() {
-  SerialSPI.IrqHandler();
-}
-void SERCOM1_2_Handler() {
-  SerialSPI.IrqHandler();
-}
-void SERCOM1_3_Handler() {
-  SerialSPI.IrqHandler();
+
+// -----------------------------------------------------------------------------
+// Reset helpers
+// -----------------------------------------------------------------------------
+void resetAllFrameErrorCounts()
+{
+  noInterrupts();
+//  uart1_frame_errors = 0;
+  SerialA4_frame_errors = 0;
+  SerialD12_frame_errors = 0;
+  SerialSPI_frame_errors = 0;
+  interrupts();
 }
 
-void SERCOM5_0_Handler() {
-  SerialD12.IrqHandler();
+void resetFrameErrorCount(volatile uint32_t &counter)
+{
+  noInterrupts();
+  counter = 0;
+  interrupts();
 }
-void SERCOM5_1_Handler() {
-  SerialD12.IrqHandler();
+
+// Optional read helper
+uint32_t getFrameErrorCount(volatile uint32_t &counter)
+{
+  noInterrupts();
+  uint32_t value = counter;
+  interrupts();
+  return value;
 }
-void SERCOM5_2_Handler() {
-  SerialD12.IrqHandler();
-}
-void SERCOM5_3_Handler() {
-  SerialD12.IrqHandler();
-}
+
+
+// -----------------------------------------------------------------------------
+// SERCOM IRQ handlers
+// Count frame error first, then hand over to the normal Arduino UART handler.
+// -----------------------------------------------------------------------------
+void SERCOM0_0_Handler() { countFrameError(SERCOM0, SerialA4_frame_errors); SerialA4.IrqHandler(); }
+void SERCOM0_1_Handler() { countFrameError(SERCOM0, SerialA4_frame_errors); SerialA4.IrqHandler(); }
+void SERCOM0_2_Handler() { countFrameError(SERCOM0, SerialA4_frame_errors); SerialA4.IrqHandler(); }
+void SERCOM0_3_Handler() { countFrameError(SERCOM0, SerialA4_frame_errors); SerialA4.IrqHandler(); }
+
+void SERCOM1_0_Handler() { countFrameError(SERCOM1, SerialSPI_frame_errors); SerialSPI.IrqHandler(); }
+void SERCOM1_1_Handler() { countFrameError(SERCOM1, SerialSPI_frame_errors); SerialSPI.IrqHandler(); }
+void SERCOM1_2_Handler() { countFrameError(SERCOM1, SerialSPI_frame_errors); SerialSPI.IrqHandler(); }
+void SERCOM1_3_Handler() { countFrameError(SERCOM1, SerialSPI_frame_errors); SerialSPI.IrqHandler(); }
+
+void SERCOM5_0_Handler() { countFrameError(SERCOM5, SerialD12_frame_errors); SerialD12.IrqHandler(); }
+void SERCOM5_1_Handler() { countFrameError(SERCOM5, SerialD12_frame_errors); SerialD12.IrqHandler(); }
+void SERCOM5_2_Handler() { countFrameError(SERCOM5, SerialD12_frame_errors); SerialD12.IrqHandler(); }
+void SERCOM5_3_Handler() { countFrameError(SERCOM5, SerialD12_frame_errors); SerialD12.IrqHandler(); }
+
+//// Because I'm using the build in Serial1, I can't override the handler.  To get it to work for
+// SERCOM3, I think I would need to edit the variant file.  Getting frame errors on 3 of the 
+// receivers is probably enough for my research needs (although annoying).
+//void SERCOM3_0_Handler() { countFrameError(SERCOM3, uart1_frame_errors); Serial1.IrqHandler(); }
+//void SERCOM3_1_Handler() { countFrameError(SERCOM3, uart1_frame_errors); Serial1.IrqHandler(); }
+//void SERCOM3_2_Handler() { countFrameError(SERCOM3, uart1_frame_errors); Serial1.IrqHandler(); }
+//void SERCOM3_3_Handler() { countFrameError(SERCOM3, uart1_frame_errors); Serial1.IrqHandler(); }
+
 
 // -----------------------------------------------------------------------------
 // 58 kHz clock on D7 using TCC1
@@ -184,6 +226,8 @@ void setup() {
   configureSercomInvert(SERCOM5, true, false); // SerialD12
   configureSercomInvert(SERCOM1, true, false); // SerialSPI
 
+  
+  resetAllFrameErrorCounts();
 
   // I2C: default Wire on SDA/SCL -> SERCOM2
   Wire.begin();
