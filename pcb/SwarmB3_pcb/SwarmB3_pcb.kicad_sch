@@ -7329,7 +7329,7 @@
 		)
 		(uuid "691ca0bf-fce9-4e88-bef9-9a48509c96b2")
 	)
-	(text "Header to M5Stack Core2\n"
+	(text "Header to M5Stack Core2\nPhysical pin layout different!"
 		(exclude_from_sim no)
 		(at 136.652 17.018 0)
 		(effects
@@ -7342,7 +7342,7 @@
 	)
 	(text "https://uk.rs-online.com/web/p/ir-leds/8187672"
 		(exclude_from_sim no)
-		(at 172.212 208.534 0)
+		(at 171.704 204.724 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7383,7 +7383,7 @@
 	)
 	(text "https://cdn-learn.adafruit.com/assets/assets/000/130/241/large1024/updated_adafruit_products_Adafruit_ItsyBitsy_M4_Pinout.png?1716570286"
 		(exclude_from_sim no)
-		(at 215.392 205.994 0)
+		(at 214.884 202.184 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7412,7 +7412,7 @@
 		)
 		(uuid "e54ec9d0-f224-4083-b927-9c728ebc8d52")
 	)
-	(text "i2c expansion headers\n"
+	(text "i2c expansion header\n"
 		(exclude_from_sim no)
 		(at 14.478 67.818 0)
 		(effects
