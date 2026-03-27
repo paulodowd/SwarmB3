@@ -1,5 +1,7 @@
 # SwarmB3
 
+Working on version 3... so I decided the tinkering hadn't finished yet :)
+
 Currently work in progress.  
 - PCB designed but not tested.
 - Initial code drafted but not tested.
