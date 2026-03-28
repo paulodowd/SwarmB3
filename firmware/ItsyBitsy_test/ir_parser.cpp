@@ -32,14 +32,13 @@ void IRParser_c:: copyMsg( uint8_t * dest ) {
 
 }
 
-int IRParser_c::getNextByte( uint32_t byte_timeout ) {
+int IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
   // Note: not using while.  We don't want to
   // block the code.  Instead, we'll call this
   // function iteratively and fast.
   if ( port.available() ) {
 
-    
 
     // move the timeout timestamp forwards
     timeout_ts = millis();
@@ -163,8 +162,8 @@ int IRParser_c::getNextByte( uint32_t byte_timeout ) {
   // because we need to have consecutive bytes 
   // to get a correct message (CRC).
   if ( rx_state != RX_WAIT_START ) {
-    if ( byte_timeout > 0 ) {
-      if ( millis() - timeout_ts > byte_timeout ) {
+    if ( byte_timeout_ms > 0 ) {
+      if ( millis() - timeout_ts > byte_timeout_ms ) {
         reset();
         return -ERR_BYTE_TIMEOUT;
       }

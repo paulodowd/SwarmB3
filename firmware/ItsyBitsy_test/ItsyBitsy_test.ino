@@ -5,6 +5,7 @@
 //#include "sam.h" // for SAMD51 registers
 
 #include "ir_parser.h"
+#include "ircomm_i2c.h"
 
 // GPIO mappings
 #define DEMOD1_EN_PIN PIN_PA21
@@ -22,7 +23,7 @@
 // -----------------------------------------------------------------------------
 // UART objects
 // TODO: rename all of them to better indicate the direction
-//       of the receivers and transmitters with respect to 
+//       of the receivers and transmitters with respect to
 //       the robot body.
 // -----------------------------------------------------------------------------
 
@@ -39,15 +40,34 @@ Uart SerialD12(&sercom5, PIN_PA22, PIN_PA23, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 Uart SerialSPI(&sercom1, PIN_SPI_SCK, PIN_SPI_MOSI, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 
 // Match up 4 instances of the ir parsrer.
-IRParser_c ir_parser[4] = { Serial1, SerialA4, SerialD12, SerialSPI };
+IRParser_c parser[4] = { Serial1, SerialA4, SerialD12, SerialSPI };
+
 
 // -----------------------------------------------------------------------------
-// Frame error counters
+// Frame error counters per UART
 // -----------------------------------------------------------------------------
-//volatile uint32_t uart1_frame_errors = 0;   // Serial1 / SERCOM3
-volatile uint32_t SerialA4_frame_errors = 0;   // SerialA4 / SERCOM0
-volatile uint32_t SerialD12_frame_errors = 0;   // SerialD12 / SERCOM5
-volatile uint32_t SerialSPI_frame_errors = 0;   // SerialSPI / SERCOM1
+volatile uint32_t Serial1_frame_errors = 0;
+volatile uint32_t SerialA4_frame_errors = 0;
+volatile uint32_t SerialD12_frame_errors = 0;
+volatile uint32_t SerialSPI_frame_errors = 0;
+
+
+// Struct to group them all up and keep things
+// consistent.
+struct UartChannel {
+  const char * name;
+  Sercom *  hw; // raw CMSIS peripheral, register access
+  Uart * port;  // Arduino UART/Serial wrapper class
+  volatile uint32_t * frame_errors;
+};
+
+UartChannel uart_channel[4] = {
+  {"front", SERCOM3, &Serial1, &Serial1_frame_errors },
+  {"front", SERCOM0, &SerialA4, &SerialA4_frame_errors },
+  {"front", SERCOM5, &SerialD12, &SerialD12_frame_errors },
+  {"front", SERCOM1, &SerialSPI, &SerialSPI_frame_errors }
+};
+
 
 // -----------------------------------------------------------------------------
 // Helper: count frame error if present
@@ -57,7 +77,7 @@ static inline void countFrameError(Sercom *hw, volatile uint32_t &counter)
 {
   if (hw->USART.INTFLAG.bit.ERROR && hw->USART.STATUS.bit.FERR) {
     counter++;
-  }
+  }  
 }
 
 
@@ -67,25 +87,27 @@ static inline void countFrameError(Sercom *hw, volatile uint32_t &counter)
 void resetAllFrameErrorCounts()
 {
   noInterrupts();
-//  uart1_frame_errors = 0;
-  SerialA4_frame_errors = 0;
-  SerialD12_frame_errors = 0;
-  SerialSPI_frame_errors = 0;
+  //  uart1_frame_errors = 0;
+  uart_channel[0].frame_errors = 0;
+  uart_channel[1].frame_errors = 0;
+  uart_channel[2].frame_errors = 0;
+  uart_channel[3].frame_errors = 0;
+
   interrupts();
 }
 
-void resetFrameErrorCount(volatile uint32_t &counter)
+void resetFrameErrorCount( UartChannel& ch )
 {
   noInterrupts();
-  counter = 0;
+  *(ch.frame_errors) = 0;
   interrupts();
 }
 
 // Optional read helper
-uint32_t getFrameErrorCount(volatile uint32_t &counter)
+uint32_t getFrameErrorCount( UartChannel& ch )
 {
   noInterrupts();
-  uint32_t value = counter;
+  uint32_t value = *(ch.frame_errors);
   interrupts();
   return value;
 }
@@ -94,30 +116,95 @@ uint32_t getFrameErrorCount(volatile uint32_t &counter)
 // -----------------------------------------------------------------------------
 // SERCOM IRQ handlers
 // Count frame error first, then hand over to the normal Arduino UART handler.
+// Note: SERCOM3 (channel 0) is not being tracked
 // -----------------------------------------------------------------------------
-void SERCOM0_0_Handler() { countFrameError(SERCOM0, SerialA4_frame_errors); SerialA4.IrqHandler(); }
-void SERCOM0_1_Handler() { countFrameError(SERCOM0, SerialA4_frame_errors); SerialA4.IrqHandler(); }
-void SERCOM0_2_Handler() { countFrameError(SERCOM0, SerialA4_frame_errors); SerialA4.IrqHandler(); }
-void SERCOM0_3_Handler() { countFrameError(SERCOM0, SerialA4_frame_errors); SerialA4.IrqHandler(); }
+void SERCOM0_0_Handler() {
+  countFrameError( SERCOM0, SerialA4_frame_errors);
+  SerialA4.IrqHandler();
+}
+void SERCOM0_1_Handler() {
+  countFrameError( SERCOM0, SerialA4_frame_errors);
+  SerialA4.IrqHandler();
+}
+void SERCOM0_2_Handler() {
+  countFrameError( SERCOM0, SerialA4_frame_errors);
+  SerialA4.IrqHandler();
+}
+void SERCOM0_3_Handler() {
+  countFrameError( SERCOM0, SerialA4_frame_errors);
+  SerialA4.IrqHandler();
+}
 
-void SERCOM1_0_Handler() { countFrameError(SERCOM1, SerialSPI_frame_errors); SerialSPI.IrqHandler(); }
-void SERCOM1_1_Handler() { countFrameError(SERCOM1, SerialSPI_frame_errors); SerialSPI.IrqHandler(); }
-void SERCOM1_2_Handler() { countFrameError(SERCOM1, SerialSPI_frame_errors); SerialSPI.IrqHandler(); }
-void SERCOM1_3_Handler() { countFrameError(SERCOM1, SerialSPI_frame_errors); SerialSPI.IrqHandler(); }
+void SERCOM5_0_Handler() {
+  countFrameError( SERCOM5, SerialD12_frame_errors);
+  SerialD12.IrqHandler();
+}
+void SERCOM5_1_Handler() {
+  countFrameError( SERCOM5, SerialD12_frame_errors);
+  SerialD12.IrqHandler();
+}
+void SERCOM5_2_Handler() {
+  countFrameError( SERCOM5, SerialD12_frame_errors);
+  SerialD12.IrqHandler();
+}
+void SERCOM5_3_Handler() {
+  countFrameError( SERCOM5, SerialD12_frame_errors);
+  SerialD12.IrqHandler();
+}
 
-void SERCOM5_0_Handler() { countFrameError(SERCOM5, SerialD12_frame_errors); SerialD12.IrqHandler(); }
-void SERCOM5_1_Handler() { countFrameError(SERCOM5, SerialD12_frame_errors); SerialD12.IrqHandler(); }
-void SERCOM5_2_Handler() { countFrameError(SERCOM5, SerialD12_frame_errors); SerialD12.IrqHandler(); }
-void SERCOM5_3_Handler() { countFrameError(SERCOM5, SerialD12_frame_errors); SerialD12.IrqHandler(); }
-
-//// Because I'm using the build in Serial1, I can't override the handler.  To get it to work for
-// SERCOM3, I think I would need to edit the variant file.  Getting frame errors on 3 of the 
+void SERCOM1_0_Handler() {
+  countFrameError( SERCOM0, SerialSPI_frame_errors);
+  SerialSPI.IrqHandler();
+}
+void SERCOM1_1_Handler() {
+  countFrameError( SERCOM0, SerialSPI_frame_errors);
+  SerialSPI.IrqHandler();
+}
+void SERCOM1_2_Handler() {
+  countFrameError( SERCOM0, SerialSPI_frame_errors);
+  SerialSPI.IrqHandler();
+}
+void SERCOM1_3_Handler() {
+  countFrameError( SERCOM0, SerialSPI_frame_errors);
+  SerialSPI.IrqHandler();
+}
+//// Because I'm using the built-in Serial1, I can't override the handler.  To get it to work for
+// SERCOM3, I think I would need to edit the variant file.  Getting frame errors on 3 of the
 // receivers is probably enough for my research needs (although annoying).
 //void SERCOM3_0_Handler() { countFrameError(SERCOM3, uart1_frame_errors); Serial1.IrqHandler(); }
 //void SERCOM3_1_Handler() { countFrameError(SERCOM3, uart1_frame_errors); Serial1.IrqHandler(); }
 //void SERCOM3_2_Handler() { countFrameError(SERCOM3, uart1_frame_errors); Serial1.IrqHandler(); }
 //void SERCOM3_3_Handler() { countFrameError(SERCOM3, uart1_frame_errors); Serial1.IrqHandler(); }
 
+typedef struct {
+  ir_crc_t          crc;
+  ir_activity_t     activity;
+  ir_saturation_t   saturation;
+  ir_errors_t       errors;
+  ir_frame_errors_t frame_errors;
+  ir_msg_timings_t  msg_timings;
+  ir_byte_timings_t  byte_timings;
+  ir_vectors_t      vectors;
+  ir_bearing_t      bearing;
+  ir_sensors_t      sensors;
+} ircomm_metrics_t;
+ircomm_metrics_t metrics;
+
+// A record of byte activity per
+// receiver which is periodically
+// reset to 0.  Allows for the
+// estimation of bearing to other
+// transmitting boards/robots.
+float bearing_activity[4];
+unsigned long tx_ts;     // periodic transmit
+unsigned long led_ts;    // LED time stamp
+typedef struct { // 31 bytes
+  ir_tx_params_t  tx;          // 11 bytes
+  ir_rx_params_t  rx;          // 20 bytes
+} ircomm_config_t;
+ircomm_config_t config;
+
+volatile byte tx_buf[4][MAX_TX_BUF];
 
 // -----------------------------------------------------------------------------
 // 58 kHz clock on D7 using TCC1
@@ -226,7 +313,7 @@ void setup() {
   configureSercomInvert(SERCOM5, true, false); // SerialD12
   configureSercomInvert(SERCOM1, true, false); // SerialSPI
 
-  
+
   resetAllFrameErrorCounts();
 
   // I2C: default Wire on SDA/SCL -> SERCOM2
@@ -245,9 +332,347 @@ void setup() {
   pinMode( LDRC_IN_PIN, INPUT );
   pinMode( PROXA_IN_PIN, INPUT );
   pinMode( PROXB_IN_PIN, INPUT );
-  
+
 
   Serial.println("Setup complete");
+}
+
+
+void update() {
+
+
+  // Check each uart interface
+  for ( int i = 0; i < 4; i++ ) {
+
+
+    bool activity  = false;
+    bool transmit  = false;
+
+    int status = parser[i].getNextByte(100);
+
+    if ( i != 0 ) {
+      metrics.frame_errors.rx[ i ] += getFrameErrorCount( uart_channel[i] );
+      resetFrameErrorCount( uart_channel[i] );
+    }
+
+    // Use the value of status to update metrics and/or
+    // to transfer a message into the i2c variables.
+    // status  < 0 : error type defined in ir_parser.h
+    // status == 0 : no bytes were received
+    // status == 1 : 1 byte was received, not a full message
+    // status  > 1 : a full message was received correctly
+    if ( status < 0 ) { // error when receiving
+
+      metrics.crc.fail[i]++;
+
+      // Flip status to index error type
+      status *= -1;
+
+      // only status 4 is a no byte error
+      if ( status < 4 ) activity = true;
+
+      // Status code is 1:4, error array needs 0:3
+      status -= 1;
+
+      metrics.errors.type[ i ][ status ]++;
+
+    } else if ( status == 1 ) { // got a byte, but not a message
+
+      activity = true;
+
+
+    } else if ( status > 1 ) { // successfully decoded a message
+
+      activity = true;
+
+      updateMsgTimestamp( i );
+
+      // TODO: this is where we would set a flag to
+      // transmit on successful receipt of a message
+      // if that was set in config?
+    }
+
+
+    // If there was any byte activity, update the
+    // byte level timestamps
+    if ( activity ) {
+      updateByteTimestamp(i);
+      bearing_activity[i] += 1;
+      metrics.activity.rx[i]++;
+    }
+
+    // Update time between receiving messages and
+    // receiving bytes (dt)
+    updateMsgElapsedTime(i);
+    updateByteElapsedTime(i);
+
+
+    // If there was no activity on this receiver.
+    if ( !activity ) {
+      // This is an attempt at a fix to a problem I haven't
+      // fully diagnosed or solved yet.  It seems like the
+      // AGC in the receiver can saturate or lower the gain
+      // to 0, causing no bytes to be received.  If we find
+      // that there is no activity for a long time, setting
+      // desaturate = 1 will mean we attempt to power cycle
+      // the receiver.
+      //      if ( config.rx.flags.bits.desaturate == 1 ) {
+      if ( isRxDesaturate() ) { // if we have a saturation timeout
+
+        if ( metrics.byte_timings.dt_us[i] > (uint32_t)config.rx.saturation_us ) {
+
+          toggleRxPower( i );
+
+          // Advance this byte time stamp so
+          // that we don't immediately trigger
+          // again.
+          metrics.byte_timings.ts_us[i] = micros();
+
+          // Add to our count of saturation
+          // occurences.
+          metrics.saturation.rx[i]++;
+        }
+      }
+
+    }
+
+    // overrun == true: The board is configured to finish receiving
+    // once the start byte has been received
+    if ( config.rx.flags.bits.overrun && parser[i].rx_state != RX_WAIT_START ) {
+
+      // Prevent transmission
+      transmit = false;
+
+    } else if ( isTxPeriodic(i) ) {
+
+      if ( millis() - tx_ts > config.tx.interval_ms ) {
+        transmit = true;
+      }
+    }
+
+
+    // defer == true: recent byte activity will mean
+    // that the transmission is deferred (cancelled)
+    if ( config.tx.flags.bits.defer ) {
+
+      // Was the last byte activity within the time
+      // expected?
+      if ( micros() - metrics.byte_timings.ts_us[ i ] < US_PER_BYTE_58KHZ * config.tx.defer_multi ) {
+        transmit = false;
+      }
+    }
+
+
+    if ( transmit ) {
+
+      // Interupts any rx in process
+      if ( doTransmit(i) ) {
+        // It takes times to transmit and
+        // the UART rx buffer is reset.
+        // So we should also reset the
+        // parser.
+        parser[i].reset();
+
+        // Update timestamp for the next
+        // transmission occurence
+//        setTxPeriod(); // TODO
+
+        // If we did a transmission, our
+        // saturation/inactivty timeout may
+        // trigger because of the time
+        // spent transmitting. So we
+        // update all the byte timestamps
+        // here.
+        advanceByteTimestamps();
+      }
+
+    }
+
+
+  }
+
+}
+
+boolean doTransmit( int which ) {
+
+      // Don't do anything if there is no message
+      // to transmit.
+      if ( config.tx.len[which] == 0 || config.tx.repeat == 0 ) {
+
+        // Schedule next transmission
+        // Redundant if set to INTERLEAVED
+//        setTxPeriod(); // TODO
+        return false;        
+      
+      } else {
+
+
+
+        // Stop receiving
+        disableSercomRx( uart_channel[which].hw );
+        
+        // Transmission might be improved with some message
+        // pre-amble that allows the receiving UART to
+        // determine the clock of the source.
+        // Add some preamble bytes. 0x55 = 0b01010101
+        for ( uint8_t i = 0; i < config.tx.preamble_repeat; i++ ) {
+          uart_channel[which].port->write( TX_PREAMBLE_BYTE );
+        }
+
+        // Using NeoSerial.print transmits over
+        // IR.  NeoSerial TX is modulated with
+        // the 38Khz or 58khz carrier in hardware.
+        //unsigned long start_t = micros();
+        for ( uint32_t i = 0; i < config.tx.repeat; i++ ) {
+
+          // Checking HardwareNeoSerial.cpp, .write() is a blocking
+          // function.  Therefore we don't need .flush()
+          //NeoSerial.availableForWrite();
+          for ( int j = 0; j < config.tx.len[i]; j++ ) {
+            uart_channel[which].port->write( tx_buf[i][j] );
+          }
+
+          //NeoSerial.print(tx_buf);
+          uart_channel[which].port->flush();  // wait for send to complete
+        }
+
+        // Since we used disableRx(), we need to
+        // re-enable the UART and so clear
+        // the rx flags and rx_buf
+
+        resetUART(which);
+
+        // Schedule next transmission
+        // Redundant if tx_mode INTERLEAVED
+//        setTxPeriod(); // todo
+        return true;
+
+      }
+
+      return false;
+
+    }
+
+// TODO: we need to think about whether each UART now
+// has independent transmission timings.
+bool isTxPeriodic(int which) {
+  if ( config.tx.interval_ms > 0 ) return true;
+  return false;
+}
+
+static void disableSercomRx(Sercom* hw) {
+  // Optional: wait for any current receive operation to settle
+  while (hw->USART.SYNCBUSY.bit.CTRLB) {
+  }
+
+  // Disable receiver
+  hw->USART.CTRLB.bit.RXEN = 0;
+
+  // Wait for synchronization
+  while (hw->USART.SYNCBUSY.bit.CTRLB) {
+  }
+}
+
+static void enableSercomRx(Sercom* hw) {
+  // Enable receiver
+  hw->USART.CTRLB.bit.RXEN = 1;
+
+  // Wait for synchronization
+  while (hw->USART.SYNCBUSY.bit.CTRLB) {
+  }
+}
+
+static void clearSercomRxBuffer(Sercom* hw) {
+  // Drain any received data
+  while (hw->USART.INTFLAG.bit.RXC) {
+    volatile uint8_t dummy = hw->USART.DATA.reg;
+    (void)dummy;
+  }
+
+  // Clear error flags
+  hw->USART.STATUS.reg =
+    SERCOM_USART_STATUS_FERR |
+    SERCOM_USART_STATUS_BUFOVF |
+    SERCOM_USART_STATUS_PERR;
+
+  // Clear error interrupt flag
+  hw->USART.INTFLAG.reg = SERCOM_USART_INTFLAG_ERROR;
+}
+
+void resetUART(int which) {
+
+  disableSercomRx( uart_channel[which].hw );
+  clearSercomRxBuffer( uart_channel[which].hw );
+  delayMicroseconds(10);
+  enableSercomRx(uart_channel[which].hw);
+
+
+}
+
+void toggleRxPower(int which) {
+
+  int pin;
+
+  switch ( which ) {
+    case 0: pin = DEMOD1_EN_PIN; break;
+    case 1: pin = DEMOD2_EN_PIN; break;
+    case 2: pin = DEMOD3_EN_PIN; break;
+    case 3: pin = DEMOD4_EN_PIN; break;
+    default: return;
+  }
+
+  // See application note for timing here.
+  digitalWrite( pin, LOW );
+  delayMicroseconds( 1200 );
+  digitalWrite( pin, HIGH );
+
+  //  resetUART();
+
+}
+
+bool isRxDesaturate() {
+  if ( config.rx.saturation_us > 0 ) return true;
+  return false;
+}
+
+// Sometimes a blocking process will have
+// prevented our timestamps progressing.
+// For messages, we leave this alone as we
+// consider blocking processes and their
+// effect on the messaging performance a
+// matter of interest.
+// But for byte activity, we are using this
+// to detect receiver saturation.
+void advanceByteTimestamps() {
+  for ( int i = 0; i < 4; i++ ) metrics.byte_timings.ts_us[i] = micros();
+}
+
+// Note: in milliseconds.  At 58khz, it
+// takes about 1.2ms to receive 1 byte,
+// and the minimum message is 5 bytes
+void updateMsgTimestamp( int which ) {
+  metrics.msg_timings.ts_ms[ which ] = millis();
+}
+void updateMsgElapsedTime( int which ) {
+  unsigned long dt = millis() - metrics.msg_timings.ts_ms[ which ];
+  metrics.msg_timings.dt_ms[ which ] = dt;
+}
+void advanceMsgTimestamps() {
+  for ( int i = 0; i < 4; i++ ) {
+    metrics.msg_timings.ts_ms[ i ] = millis();
+  }
+}
+
+// Note: in microseconds. It is possible
+// to receive a byte in 1.2ms, so millis
+// isn't quite precise enough.
+void updateByteTimestamp( int which ) {
+  metrics.byte_timings.ts_us[ which ] = micros();
+}
+
+void updateByteElapsedTime( int which ) {
+  unsigned long dt = micros() - metrics.byte_timings.ts_us[ which ];
+  metrics.byte_timings.dt_us[ which ] = dt;
 }
 
 void loop()
