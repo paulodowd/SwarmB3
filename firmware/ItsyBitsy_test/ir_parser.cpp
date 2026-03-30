@@ -32,7 +32,7 @@ void IRParser_c:: copyMsg( uint8_t * dest ) {
 
 }
 
-int IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
+int IRParser_c::getNextByte(  ) {
 
   // Note: not using while.  We don't want to
   // block the code.  Instead, we'll call this
@@ -161,14 +161,17 @@ int IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
   // timeout error.  We also reset the parser
   // because we need to have consecutive bytes 
   // to get a correct message (CRC).
-  if ( rx_state != RX_WAIT_START ) {
-    if ( byte_timeout_ms > 0 ) {
-      if ( millis() - timeout_ts > byte_timeout_ms ) {
-        reset();
-        return -ERR_BYTE_TIMEOUT;
-      }
-    }
-  }
+//  if ( rx_state != RX_WAIT_START ) {
+//    if ( byte_timeout_ms > 0 ) {
+//
+//      // TODO: we know the baudrate, I don't think
+//      // we need to pass in byte_timeout_ms here.
+//      if ( millis() - timeout_ts > byte_timeout_ms ) {
+//        reset();
+//        return -ERR_BYTE_TIMEOUT;
+//      }
+//    }
+//  }
 
   // Nothing happened
   return REPORT_ZERO_BYTES;

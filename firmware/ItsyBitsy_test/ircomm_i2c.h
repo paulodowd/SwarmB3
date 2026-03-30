@@ -180,7 +180,7 @@ typedef struct ir_tx_params {      // total = 17 bytes
   uint8_t  preamble_repeat;   // 1: how many repeated preamble bytes before transmission?
   uint32_t interval_ms;       // 4: periodic:  current ms period to send messages
   uint32_t base_ms;           // 4: min tx period allowable
-  uint8_t  len[4];            // 4: how long is the message to transmit?
+  uint8_t  len;            // 4: how long is the message to transmit?
 } ir_tx_params_t;
 
 
@@ -192,11 +192,8 @@ typedef struct ir_rx_params {       // total = 8 bytes.
     struct {
       uint8_t overrun         : 1; // complete recieve outside period?
       uint8_t desync          : 1; // randomise period?
-      uint8_t rx0             : 1; // receiver available to use?
-      uint8_t rx1             : 1; // receiver available to use?
-      uint8_t rx2             : 1; // receiver available to use?
-      uint8_t rx3             : 1; // recevier available to use?
-      uint8_t reserved        : 2; // randomise rx cycling
+      uint8_t enabled         : 1; // receiver available to use?
+      uint8_t reserved        : 5; // randomise rx cycling
     } bits;
   } flags;
 

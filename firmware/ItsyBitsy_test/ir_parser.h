@@ -45,7 +45,7 @@ class IRParser_c {
 
     void begin();
     void reset();
-    int getNextByte( unsigned long byte_timout_ms );
+    int getNextByte( );
     void copyMsg( uint8_t * dest );
 
     char CRC8(uint8_t * bytes, uint8_t len);
