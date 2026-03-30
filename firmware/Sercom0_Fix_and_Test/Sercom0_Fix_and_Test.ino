@@ -8,7 +8,7 @@ Uart SerialA4A5(&sercom0, PIN_A5, PIN_A4, SERCOM_RX_PAD_2, UART_TX_PAD_0);
 Uart SerialSPI(&sercom1, PIN_SPI_SCK, PIN_SPI_MOSI, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 
 // UART3: D12 TX / D13 RX -> SERCOM5
-Uart SerialD12(&sercom5, PIN_PA22, PIN_PA23, SERCOM_RX_PAD_1, UART_TX_PAD_0);
+Uart SerialD12(&sercom5, 13, 12, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 
 
 void SERCOM0_0_Handler() {
