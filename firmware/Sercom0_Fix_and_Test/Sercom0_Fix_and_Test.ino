@@ -1,5 +1,48 @@
 #include <Arduino.h>
 #include <wiring_private.h>
+#include <Wire.h>
+
+#pragma pack(push,1)
+
+#define ROBOT_I2C_ADDR    0x08
+
+// Flag values to change request context
+#define REQUEST_NULL        0
+#define REQUEST_SURFACE     1
+#define REQUEST_BUMP        2
+#define REQUEST_POSE        3
+#define SET_POSE            4
+#define SET_MOTORS          5
+#define SET_BUZZER          6
+#define SET_SENSOR_CONFIG   7
+
+//
+//
+// Size: 1 byte
+typedef struct {
+  uint8_t value;
+} RequestType_t;
+
+//
+//
+// Size: 10 byte
+typedef struct {
+  uint16_t  reading[5];
+} RobotSurface_t;
+
+
+// Size: 2 byte
+#define EMIT_LINE     0
+#define EMIT_BUMP     1
+#define EMIT_OFF      2
+#define MODE_MICROS   0
+#define MODE_ADC      1
+typedef struct { 
+  uint8_t   mode;            
+  uint8_t   emit;                 
+} RobotSensorConfig_t;
+
+#pragma pack(pop);
 
 // RX first, TX second
 Uart SerialA4A5(&sercom0, PIN_A5, PIN_A4, SERCOM_RX_PAD_2, UART_TX_PAD_0);
@@ -77,6 +120,55 @@ static void beginSerialA4A5_manual(uint32_t baud)
   sercom0.enableUART();
 }
 
+
+// -----------------------------------------------------------------------------
+// 58 kHz clock on D7 using TCC1
+// D7 = PA18 = TCC1/WO[2]
+// -----------------------------------------------------------------------------
+static void setup58kHz() {
+  // D7 on ItsyBitsy M4 = PA18
+  // PA18 can be muxed to TCC1/WO[2]
+
+  // Configure PA18 for peripheral output
+  PORT->Group[0].DIRSET.reg = (1 << 18);
+  PORT->Group[0].PMUX[18 >> 1].bit.PMUXE = MUX_PA18F_TCC1_WO2;
+  PORT->Group[0].PINCFG[18].bit.PMUXEN = 1;
+
+  // Enable bus clock for TCC1
+  MCLK->APBBMASK.reg |= MCLK_APBBMASK_TCC1;
+
+  // Route GCLK0 to TCC1
+  // On the ItsyBitsy M4, the board runs at 120 MHz. If GCLK0 is 120 MHz,
+  // this gives the frequency calculation below.
+  GCLK->PCHCTRL[TCC1_GCLK_ID].reg =
+      GCLK_PCHCTRL_GEN_GCLK0 | GCLK_PCHCTRL_CHEN;
+  while (!(GCLK->PCHCTRL[TCC1_GCLK_ID].reg & GCLK_PCHCTRL_CHEN));
+
+  // Disable TCC1 before configuration
+  TCC1->CTRLA.bit.ENABLE = 0;
+  while (TCC1->SYNCBUSY.bit.ENABLE);
+
+  // Prescaler = 1
+  TCC1->CTRLA.reg = TCC_CTRLA_PRESCALER_DIV1;
+
+  // Normal PWM mode
+  TCC1->WAVE.reg = TCC_WAVE_WAVEGEN_NPWM;
+  while (TCC1->SYNCBUSY.bit.WAVE);
+
+  // 120 MHz / (2068 + 1) = 57,999 Hz
+  TCC1->PER.reg = 2068;
+  while (TCC1->SYNCBUSY.bit.PER);
+
+  // ~50% duty cycle
+  TCC1->CC[2].reg = 1034;
+  while (TCC1->SYNCBUSY.bit.CC2);
+
+  // Enable TCC1
+  TCC1->CTRLA.bit.ENABLE = 1;
+  while (TCC1->SYNCBUSY.bit.ENABLE);
+}
+
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -98,15 +190,63 @@ void setup() {
 
   beginSerialA4A5_manual(9600);
 
+
+  Wire.begin();
+  Wire.setClock(100000);
+  //
+  //    Wire.onReceive( i2c_receive );
+  //    Wire.onRequest( i2c_request );
+
   Serial.println("SERCOM0 ready");
   SerialA4A5.println("Hello from SERCOM0 A4/A5");
+
+  setup58kHz();
+
+  delay(100);
+  setSensorConfig( 0, 0 );
 }
 
+
+void setSensorConfig( uint8_t mode, uint8_t emit ) {
+
+//  if ( mode > ADC ) return;
+//  if ( emit > EMIT_OFF ) return;
+
+  RequestType_t request;
+  request.value = SET_SENSOR_CONFIG;
+  Wire.beginTransmission( ROBOT_I2C_ADDR );
+  Wire.write( (byte*)&request, sizeof( request ));
+  Wire.endTransmission();
+
+  RobotSensorConfig_t new_config;
+  new_config.emit = emit;
+  new_config.mode = mode;
+
+  Wire.beginTransmission( ROBOT_I2C_ADDR );
+  Wire.write( (byte*)&new_config, sizeof( new_config ));
+  Wire.endTransmission();
+}
+//
+//void i2c_receive( int len ) {
+//
+//
+//}
+//
+//void i2c_request( ) {
+//
+//}
+
+static unsigned long update_ts;
+static unsigned long i2c_ts;
 void loop() {
   //  while (Serial.available()) {
   //    SerialA4A5.write(Serial.read());
   //  }
 
+
+  if( millis() - update_ts > 500 ) {
+    update_ts = millis();
+  
   Serial.println("A4: ");
   while (SerialA4A5.available()) {
     Serial.print((char)SerialA4A5.read());
@@ -142,7 +282,31 @@ void loop() {
 
   Serial1.print("S1 ");
   Serial1.println(millis());
+  }
 
+  if( millis() - i2c_ts > 100 ) {
+    i2c_ts = millis();
+    getSurfaceSensors();
+  }
+}
 
-  delay(500);
+void getSurfaceSensors() {
+  RobotSurface_t surface;
+  memset( &surface, 0, sizeof( surface ));
+  RequestType_t request;
+  request.value = REQUEST_SURFACE;
+  Wire.beginTransmission( ROBOT_I2C_ADDR );
+  Wire.write( (byte*)&request, sizeof( request ));
+  Wire.endTransmission();
+
+  Wire.requestFrom( ROBOT_I2C_ADDR, sizeof( surface ));
+  Wire.readBytes((byte*)&surface, sizeof( surface ) );
+
+  for ( int i = 0; i < 5; i++ ) {
+    Serial.print( surface.reading[i] );
+    Serial.print(",");
+
+  }
+  Serial.println();
+
 }

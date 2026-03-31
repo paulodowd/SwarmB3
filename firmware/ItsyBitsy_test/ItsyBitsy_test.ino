@@ -12,7 +12,7 @@
 #define DEMOD2_EN_PIN PIN_PA20
 #define DEMOD3_EN_PIN PIN_PA19
 #define DEMOD4_EN_PIN PIN_PB23
-#define IRCLK_58K_PIN PIN_PA18
+7
 #define PROXA_IN_PIN  PIN_PA02
 #define PROXB_IN_PIN  PIN_PB08
 #define LDRA_IN_PIN   PIN_PB09
@@ -50,6 +50,13 @@ volatile uint32_t Serial1_frame_errors = 0;
 volatile uint32_t SerialA4_frame_errors = 0;
 volatile uint32_t SerialD12_frame_errors = 0;
 volatile uint32_t SerialSPI_frame_errors = 0;
+
+
+enum class DemodState : uint8_t {
+  OFF = 0,
+  STABILISING = 1,
+  ON = 2
+};
 
 
 // Struct to group them all up and keep things
@@ -655,7 +662,8 @@ boolean doTransmit( int which ) {
       }
 
       //NeoSerial.print(tx_buf);
-      uart_channel[which].port->flush();  // wait for send to complete
+      // We don't want to block
+      //uart_channel[which].port->flush();  // wait for send to complete
     }
 
     // Since we used disableRx(), we need to
