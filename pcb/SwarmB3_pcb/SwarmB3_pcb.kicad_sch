@@ -8707,7 +8707,7 @@
 			)
 		)
 	)
-	(global_label "IR_CLK_58K"
+	(global_label "CLK_58K"
 		(shape input)
 		(at 201.93 130.81 180)
 		(fields_autoplaced yes)
@@ -8719,7 +8719,7 @@
 		)
 		(uuid "1088c989-f45f-4563-94ee-b4bd562b0ffe")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 188.5319 130.81 0)
+			(at 191.3743 130.81 0)
 			(effects
 				(font
 					(size 1.27 1.27)

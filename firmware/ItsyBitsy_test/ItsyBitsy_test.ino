@@ -127,22 +127,33 @@ void setup() {
 
   Serial.println("Reset");
 
-
+  pinMode(12, OUTPUT);
+  digitalWrite(12,HIGH);
+  pinMode(A4, OUTPUT);
+  digitalWrite(A4,HIGH);
+  pinMode(PIN_SPI_MOSI, OUTPUT);
+  digitalWrite(PIN_SPI_MOSI,HIGH);
+  pinMode(1,OUTPUT);
+  digitalWrite(1,HIGH);
+  pinMode(7,OUTPUT);
+  digitalWrite(7,HIGH);
+  pinMode(13,OUTPUT);
+  digitalWrite(13,HIGH);
   // UART1: built-in Serial1 on D1/D0
-  Serial1.begin(9600);
-
-
-  // UART4: MOSI TX / SCK RX -> SERCOM1 (SCK is 24, MOSI is 25)
-  pinPeripheral(PIN_SPI_MOSI, PIO_SERCOM_ALT);
-  pinPeripheral(PIN_SPI_SCK,  PIO_SERCOM_ALT);
-  SerialSPI.begin(9600);
-
-  // UART3: D12 TX / D13 RX -> SERCOM5
-  pinPeripheral(12, PIO_SERCOM_ALT);
-  pinPeripheral(13, PIO_SERCOM_ALT);
-  SerialD12.begin(9600);
-
-  beginSerialA4A5_manual(9600);
+//  Serial1.begin(9600);
+//
+//
+//  // UART4: MOSI TX / SCK RX -> SERCOM1 (SCK is 24, MOSI is 25)
+//  pinPeripheral(PIN_SPI_MOSI, PIO_SERCOM_ALT);
+//  pinPeripheral(PIN_SPI_SCK,  PIO_SERCOM_ALT);
+//  SerialSPI.begin(9600);
+//
+//  // UART3: D12 TX / D13 RX -> SERCOM5
+//  pinPeripheral(12, PIO_SERCOM_ALT);
+//  pinPeripheral(13, PIO_SERCOM_ALT);
+//  SerialD12.begin(9600);
+//
+//  beginSerialA4A5_manual(9600);
   //
   //  // Invert TX on all 4 UARTs
   //  // This will mean idle is low (0v), and so the
@@ -167,7 +178,7 @@ void setup() {
   //  Wire.onRequest( i2c_request );
   //
   //  // 58 kHz output on D4
-  //  setup58kHz();
+//  setup58kHz();
   //
   //  // Analog inputs
   //  pinMode( LDRA_IN_PIN, INPUT );
@@ -187,41 +198,41 @@ void loop() {
   //    SerialA4A5.write(Serial.read());
   //  }
 
-  Serial.println("A4: ");
-  while (SerialA4.available()) {
-    Serial.print((char)SerialA4.read());
-  }
-
-  Serial.println("\nSPI: ");
-  while ( SerialSPI.available() ) {
-    Serial.print( (char)SerialSPI.read() );
-  }
-
-  Serial.println("\nD12: ");
-  while ( SerialD12.available() ) {
-    Serial.print( (char)SerialD12.read() );
-  }
-
-  Serial.println("\nS1: ");
-  while ( Serial1.available() ) {
-    Serial.print( (char)Serial1.read() );
-  }
-
-  Serial.println("\n******\n");
-
-  SerialA4.print("A4 ");
-  SerialA4.println(millis());
-
-
-  SerialSPI.print("SPI ");
-  SerialSPI.println(millis());
-
-
-  SerialD12.print("D12 ");
-  SerialD12.println(millis());
-
-  Serial1.print("S1 ");
-  Serial1.println(millis());
+//  Serial.println("A4: ");
+//  while (SerialA4.available()) {
+//    Serial.print((char)SerialA4.read());
+//  }
+//
+//  Serial.println("\nSPI: ");
+//  while ( SerialSPI.available() ) {
+//    Serial.print( (char)SerialSPI.read() );
+//  }
+//
+//  Serial.println("\nD12: ");
+//  while ( SerialD12.available() ) {
+//    Serial.print( (char)SerialD12.read() );
+//  }
+//
+//  Serial.println("\nS1: ");
+//  while ( Serial1.available() ) {
+//    Serial.print( (char)Serial1.read() );
+//  }
+//
+//  Serial.println("\n******\n");
+//
+//  SerialA4.print("A4 ");
+//  SerialA4.println(millis());
+//
+//
+//  SerialSPI.print("SPI ");
+//  SerialSPI.println(millis());
+//
+//
+//  SerialD12.print("D12 ");
+//  SerialD12.println(millis());
+//
+//  Serial1.print("S1 ");
+//  Serial1.println(millis());
 
 
   delay(500);
