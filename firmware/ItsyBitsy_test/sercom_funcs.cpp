@@ -25,7 +25,7 @@ volatile uint32_t SerialSPI_frame_errors = 0;
 Uart& uart1 = Serial1;
 
 // UART2: A4 TX / A1 RX  -> SERCOM0
-Uart SerialA4(&sercom0, PIN_A5, PIN_A4, SERCOM_RX_PAD_2, UART_TX_PAD_0);
+Uart SerialA4(&sercom0, PIN_A1, PIN_A4, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 
 // UART3: D12 TX / D13 RX -> SERCOM5
 Uart SerialD12(&sercom5, 13, 12, SERCOM_RX_PAD_1, UART_TX_PAD_0);
@@ -34,10 +34,10 @@ Uart SerialD12(&sercom5, 13, 12, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 Uart SerialSPI(&sercom1, PIN_SPI_SCK, PIN_SPI_MOSI, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 
 UartChannel uart_channel[4] = {
-  {"front", SERCOM3, &Serial1, &Serial1_frame_errors, TxRxState::RX },
-  {"front", SERCOM0, &SerialA4, &SerialA4_frame_errors, TxRxState::RX },
-  {"front", SERCOM5, &SerialD12, &SerialD12_frame_errors, TxRxState::RX },
-  {"front", SERCOM1, &SerialSPI, &SerialSPI_frame_errors, TxRxState::RX }
+  {"s1", SERCOM3, &Serial1, &Serial1_frame_errors, TxRxState::RX },
+  {"sa4", SERCOM0, &SerialA4, &SerialA4_frame_errors, TxRxState::RX },
+  {"d12", SERCOM5, &SerialD12, &SerialD12_frame_errors, TxRxState::RX },
+  {"spi", SERCOM1, &SerialSPI, &SerialSPI_frame_errors, TxRxState::RX }
 };
 
 
@@ -90,7 +90,7 @@ uint32_t getFrameErrorCount( UartChannel& ch ) {
 // NOTE: SAMD5x errata says TXINV and RXINV are swapped on affected silicon.
 // So to invert TX, set RXINV.
 // -----------------------------------------------------------------------------
-static void configureSercomInvert(Sercom* hw, bool invertTx, bool invertRx) {
+void configureSercomInvert(Sercom* hw, bool invertTx, bool invertRx) {
   hw->USART.CTRLA.bit.ENABLE = 0;
   while (hw->USART.SYNCBUSY.bit.ENABLE) {
   }
@@ -111,18 +111,18 @@ static void configureSercomInvert(Sercom* hw, bool invertTx, bool invertRx) {
    built in function is mucking up the MUX.
 */
 
-void beginSerialA4A5_manual(uint32_t baud) {
+void beginSerialA4A1_manual(uint32_t baud) {
   // A4 = TX = PAD0
   // A5 = RX = PAD2
   pinPeripheral(PIN_A4, PIO_SERCOM_ALT);
-  pinPeripheral(PIN_A5, PIO_SERCOM_ALT);
+  pinPeripheral(PIN_A1, PIO_SERCOM_ALT);
 
   sercom0.initUART(UART_INT_CLOCK, SAMPLE_RATE_x16, baud);
   sercom0.initFrame(UART_CHAR_SIZE_8_BITS,
                     LSB_FIRST,
                     SERCOM_NO_PARITY,
                     SERCOM_STOP_BIT_1);
-  sercom0.initPads(UART_TX_PAD_0, SERCOM_RX_PAD_2);
+  sercom0.initPads(UART_TX_PAD_0, SERCOM_RX_PAD_1);
   sercom0.enableUART();
 }
 

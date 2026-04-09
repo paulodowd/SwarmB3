@@ -32,8 +32,8 @@ struct UartChannel {
 
 extern UartChannel uart_channel[4];
 
-static void configureSercomInvert(Sercom* hw, bool invertTx, bool invertRx);
-void beginSerialA4A5_manual(uint32_t baud);
+void configureSercomInvert(Sercom* hw, bool invertTx, bool invertRx);
+void beginSerialA4A1_manual(uint32_t baud);
 static inline void countFrameError(Sercom *hw, volatile uint32_t &counter);
 void resetAllFrameErrorCounts();
 void resetFrameErrorCount( UartChannel& ch );

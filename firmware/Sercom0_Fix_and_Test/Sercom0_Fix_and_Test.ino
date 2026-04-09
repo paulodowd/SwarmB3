@@ -37,15 +37,15 @@ typedef struct {
 #define EMIT_OFF      2
 #define MODE_MICROS   0
 #define MODE_ADC      1
-typedef struct { 
-  uint8_t   mode;            
-  uint8_t   emit;                 
+typedef struct {
+  uint8_t   mode;
+  uint8_t   emit;
 } RobotSensorConfig_t;
 
 #pragma pack(pop);
 
 // RX first, TX second
-Uart SerialA4A5(&sercom0, PIN_A5, PIN_A4, SERCOM_RX_PAD_2, UART_TX_PAD_0);
+Uart SerialA4A5(&sercom0, PIN_A1, PIN_A4, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 
 // UART4: MOSI TX / SCK RX -> SERCOM1
 Uart SerialSPI(&sercom1, PIN_SPI_SCK, PIN_SPI_MOSI, SERCOM_RX_PAD_1, UART_TX_PAD_0);
@@ -109,14 +109,14 @@ static void beginSerialA4A5_manual(uint32_t baud)
   // A4 = TX = PAD0
   // A5 = RX = PAD2
   pinPeripheral(PIN_A4, PIO_SERCOM_ALT);
-  pinPeripheral(PIN_A5, PIO_SERCOM_ALT);
+  pinPeripheral(PIN_A1, PIO_SERCOM_ALT);
 
   sercom0.initUART(UART_INT_CLOCK, SAMPLE_RATE_x16, baud);
   sercom0.initFrame(UART_CHAR_SIZE_8_BITS,
                     LSB_FIRST,
                     SERCOM_NO_PARITY,
                     SERCOM_STOP_BIT_1);
-  sercom0.initPads(UART_TX_PAD_0, SERCOM_RX_PAD_2);
+  sercom0.initPads(UART_TX_PAD_0, SERCOM_RX_PAD_1);
   sercom0.enableUART();
 }
 
@@ -141,7 +141,7 @@ static void setup58kHz() {
   // On the ItsyBitsy M4, the board runs at 120 MHz. If GCLK0 is 120 MHz,
   // this gives the frequency calculation below.
   GCLK->PCHCTRL[TCC1_GCLK_ID].reg =
-      GCLK_PCHCTRL_GEN_GCLK0 | GCLK_PCHCTRL_CHEN;
+    GCLK_PCHCTRL_GEN_GCLK0 | GCLK_PCHCTRL_CHEN;
   while (!(GCLK->PCHCTRL[TCC1_GCLK_ID].reg & GCLK_PCHCTRL_CHEN));
 
   // Disable TCC1 before configuration
@@ -191,8 +191,8 @@ void setup() {
   beginSerialA4A5_manual(9600);
 
 
-  Wire.begin();
-  Wire.setClock(100000);
+  //  Wire.begin();
+  //  Wire.setClock(100000);
   //
   //    Wire.onReceive( i2c_receive );
   //    Wire.onRequest( i2c_request );
@@ -200,17 +200,27 @@ void setup() {
   Serial.println("SERCOM0 ready");
   SerialA4A5.println("Hello from SERCOM0 A4/A5");
 
-  setup58kHz();
+  //  setup58kHz();
+
+  pinMode(9,OUTPUT);
+  pinMode(10,OUTPUT);
+  pinMode(11,OUTPUT);
+  pinMode(23,OUTPUT);
+  
+  digitalWrite(9,LOW);    // D12
+  digitalWrite(10,HIGH);  
+  digitalWrite(11,LOW);   // S1
+  digitalWrite(23,LOW);   // SPI
 
   delay(100);
-  setSensorConfig( 0, 0 );
+  //  setSensorConfig( 0, 0 );
 }
 
 
 void setSensorConfig( uint8_t mode, uint8_t emit ) {
 
-//  if ( mode > ADC ) return;
-//  if ( emit > EMIT_OFF ) return;
+  //  if ( mode > ADC ) return;
+  //  if ( emit > EMIT_OFF ) return;
 
   RequestType_t request;
   request.value = SET_SENSOR_CONFIG;
@@ -244,49 +254,49 @@ void loop() {
   //  }
 
 
-  if( millis() - update_ts > 500 ) {
+  if ( millis() - update_ts > 500 ) {
     update_ts = millis();
-  
-  Serial.println("A4: ");
-  while (SerialA4A5.available()) {
-    Serial.print((char)SerialA4A5.read());
+
+    Serial.println("A4: ");
+    while (SerialA4A5.available()) {
+      Serial.print((char)SerialA4A5.read());
+    }
+
+    Serial.println("\nSPI: ");
+    while ( SerialSPI.available() ) {
+      Serial.print( (char)SerialSPI.read() );
+    }
+
+    Serial.println("\nD12: ");
+    while ( SerialD12.available() ) {
+      Serial.print( (char)SerialD12.read() );
+    }
+
+    Serial.println("\nS1: ");
+    while ( Serial1.available() ) {
+      Serial.print( (char)Serial1.read() );
+    }
+
+    Serial.println("\n******\n");
+//
+//    SerialA4A5.print("A4 ");
+//    SerialA4A5.println(millis());
+//
+//
+    SerialSPI.print("SPI ");
+    SerialSPI.println(millis());
+//
+//
+//    SerialD12.print("D12 ");
+//    SerialD12.println(millis());
+//
+//    Serial1.print("S1 ");
+//    Serial1.println(millis());
   }
 
-  Serial.println("\nSPI: ");
-  while ( SerialSPI.available() ) {
-    Serial.print( (char)SerialSPI.read() );
-  }
-
-  Serial.println("\nD12: ");
-  while ( SerialD12.available() ) {
-    Serial.print( (char)SerialD12.read() );
-  }
-
-  Serial.println("\nS1: ");
-  while ( Serial1.available() ) {
-    Serial.print( (char)Serial1.read() );
-  }
-
-  Serial.println("\n******\n");
-
-  SerialA4A5.print("A4 ");
-  SerialA4A5.println(millis());
-
-
-  SerialSPI.print("SPI ");
-  SerialSPI.println(millis());
-
-
-  SerialD12.print("D12 ");
-  SerialD12.println(millis());
-
-  Serial1.print("S1 ");
-  Serial1.println(millis());
-  }
-
-  if( millis() - i2c_ts > 100 ) {
+  if ( millis() - i2c_ts > 100 ) {
     i2c_ts = millis();
-    getSurfaceSensors();
+    //    getSurfaceSensors();
   }
 }
 
