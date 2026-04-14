@@ -196,16 +196,15 @@ int IRParser_c::formatIRMessage( uint8_t * tx_buf, uint8_t * msg, byte len ) {
     return -1;
   }
 
+
   // Clear out tx_buf
   memset( tx_buf, 0, MAX_TX_BUF );
-
 
   // Get the CRC based on just our message
   // payload
   uint16_t crc = CRC16(msg, len );
   byte lb, ub;
   splitCRC16( &ub, &lb, crc );
-
 
   // Set the first bytes of tx_buf as the
   // start token
