@@ -8,6 +8,12 @@ extern Uart port_D1_D0; // alias to Serial1
 extern Uart port_D18_D15;
 extern Uart port_D25_D24;
 extern Uart port_D12_D13;
+
+#define DEMOD1_EN_PIN 11      // Serial1
+#define DEMOD2_EN_PIN 10      // SerialA4
+#define DEMOD3_EN_PIN 9       // SerialD12
+#define DEMOD4_EN_PIN 23      // SerialSPI
+
 //
 //enum class DemodState : uint8_t {
 //  OFF = 0,
@@ -16,9 +22,9 @@ extern Uart port_D12_D13;
 //};
 
 
-enum class TxReleasePhase : uint8_t {
-  Idle,
-  WaitingForComplete
+enum class DemodState : uint8_t {
+  Active,
+  Deactive,
 };
 
 struct UartChannel {
@@ -26,9 +32,10 @@ struct UartChannel {
   Uart * port;  // Arduino UART/Serial wrapper class
   int tx_pin;
   int rx_pin;
+  int demod_pin;
+  DemodState demod_state;
+  uint32_t demod_desat_ts;
   volatile uint32_t * frame_errors;
-  volatile TxReleasePhase tx_phase;
-  volatile bool tx_release_done;
 };
 
 

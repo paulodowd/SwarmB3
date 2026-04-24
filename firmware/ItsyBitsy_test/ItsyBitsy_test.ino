@@ -9,10 +9,7 @@
 #include "ircomm_i2c.h"
 
 // GPIO mappings
-#define DEMOD1_EN_PIN 11      // Serial1
-#define DEMOD2_EN_PIN 10      // SerialA4
-#define DEMOD3_EN_PIN 9       // SerialD12
-#define DEMOD4_EN_PIN 23      // SerialSPI
+
 #define PROXA_IN_PIN  PIN_PA02
 #define PROXB_IN_PIN  PIN_PB08
 #define LDRA_IN_PIN   PIN_PB09
@@ -41,12 +38,16 @@ typedef struct {
 } ircomm_metrics_t;
 ircomm_metrics_t metrics;
 
+
+uint32_t bearing_ts;
+const uint32_t bearing_update_ms = 100;
+float bearing_activity[4];
+
 // A record of byte activity per
 // receiver which is periodically
 // reset to 0.  Allows for the
 // estimation of bearing to other
 // transmitting boards/robots.
-float bearing_activity[4];
 unsigned long tx_ts;     // periodic transmit
 unsigned long led_ts;    // LED time stamp
 
@@ -111,10 +112,9 @@ void sercomInvert(Sercom* hw, bool invertTx, bool invertRx) {
 
 void setup() {
 
-  //             tx    rx
-  //    Serial.begin(115200);
-  //    while (!Serial);
-  //  Serial.println("Reset");
+  Serial.begin(115200);
+  while (!Serial);
+  Serial.println("Reset");
 
   //  while (!Serial) {
   //  }
@@ -129,139 +129,253 @@ void setup() {
   digitalWrite( DEMOD3_EN_PIN, HIGH);
   digitalWrite( DEMOD4_EN_PIN, HIGH);
 
-  //  pinPeripheral(0, PIO_SERCOM);
-  //  pinPeripheral(1,  PIO_SERCOM);
-  //  port_D1_D0.begin(BAUD);
-  //
+  pinPeripheral(0, PIO_SERCOM);
+  pinPeripheral(1,  PIO_SERCOM);
+  port_D1_D0.begin(BAUD);
+
   //  // UART4: MOSI TX / SCK RX -> SERCOM1 (SCK is 24, MOSI is 25)
-  //  pinPeripheral(24, PIO_SERCOM_ALT);
-  //  pinPeripheral(25,  PIO_SERCOM_ALT);
-  //  port_D25_D24.begin(BAUD);
-  //
-  //  // UART3: D12 TX / D13 RX -> SERCOM5
+  pinPeripheral(24, PIO_SERCOM_ALT);
+  pinPeripheral(25,  PIO_SERCOM_ALT);
+  port_D25_D24.begin(BAUD);
+
+  // UART3: D12 TX / D13 RX -> SERCOM5
   pinPeripheral(12, PIO_SERCOM_ALT);
   pinPeripheral(13, PIO_SERCOM_ALT);
   port_D12_D13.begin(BAUD);
-  //
-  //  pinMode( 12, OUTPUT);
-  //  digitalWrite(12, LOW);
-  pinMode( 25, OUTPUT);
-  digitalWrite(25, LOW);
-  pinMode( 1, OUTPUT);
-  digitalWrite(1, LOW);
-  //  pinMode( A4, OUTPUT );
-  //  digitalWrite( A4, LOW );
-  //
+
   beginSerialA4A1_manual(BAUD);
-//  configureSercom8N1(SERCOM0);
 
   // 58 kHz output on D4
   setup58kHz();
 
-
-  #define INVERT false
-  
-  //  configureSercomInvert(SERCOM3, false, false); // Serial1 on SERCOM3
-  configureSercomInvert(SERCOM0, INVERT, false); // SerialA4
-  configureSercomInvert(SERCOM5, INVERT, false); // SerialD12
-  //  configureSercomInvert(SERCOM1, false, false); // SerialSPI
-
-  //  resetAllFrameErrorCounts();
-
-  // I2C: default Wire on SDA/SCL -> SERCOM2
-  //  Wire.begin();
-  //  Wire.setClock(400000);
-
-  //  Wire.onReceive( i2c_receive );
-  //  Wire.onRequest( i2c_request );
-
-
-  // Analog inputs
-  //  pinMode( LDRA_IN_PIN, INPUT );
-  //  pinMode( LDRB_IN_PIN, INPUT );
-  //  pinMode( LDRC_IN_PIN, INPUT );
-  //  pinMode( PROXA_IN_PIN, INPUT );
-  //  pinMode( PROXB_IN_PIN, INPUT );
+  memset( (void*)&metrics, 0, sizeof( metrics));
+  setAllByteTimestamps();
+  setAllMsgTimestamps();
+  setBearingTimestamp();
 
   //  Serial.println("Setup complete");
 }
 
-unsigned long tx_test;
 
-void loop() {
-  //  for ( int i = 2; i < 3; i++ ) {
-  char buf[MAX_TX_BUF];
-  char msg[MAX_TX_BUF];
-  memset(msg, 0, sizeof( buf ));
-  memset(buf, 0, sizeof( buf ));
-
-  for ( int i = 0; i < 10; i++ ) buf[i] = 0x6A;
-  //  buf[10] = 'p';
-  //  buf[11] = 'a';
-  //  buf[12] = 'u';
-  //  buf[13] = 'l';
-  //sprintf( msg, "tx%d-test", 0 );
-  //int l = parser[ 0 ].formatIRMessage( (uint8_t*)buf, (uint8_t*)msg, strlen(msg) );
-  //    uartSendAndRelease( channel[2], (uint8_t*)buf, l);
-  uartSendAndRelease( port_D18_D15, SERCOM0,  18, (uint8_t*)buf, 10, INVERT);
-  //  }
-//  port_D18_D15.write(buf, 10);
-  delay(20);
+void setBearingTimestamp() {
+  bearing_ts = millis();
+}
+uint32_t calcBearingDeltaTime() {
+  return millis() - bearing_ts;
 }
 
-void loop2() {
-  //    while (Serial.available()) {
-  //      SerialA4A5.write(Serial.read());
-  //    }
-
-  //
-  //  //  Serial.print("*** "); Serial.print(millis()); Serial.println(" ***");
+void zeroBearingActivity() {
+  for ( int i = 0; i < 4; i++ ) bearing_activity[i] = 0.0;
+}
+void setAllMsgTimestamps() {
   for ( int i = 0; i < 4; i++ ) {
-    int retval = parser[i].getNextByte();
-    if ( retval > 1 ) {
+    metrics.msg_timings.ts_ms[i] = millis();
+  }
+}
+void setMsgTimestamp( int which ) {
+  if ( which < 0 || which > 3 ) return;
+  metrics.msg_timings.ts_ms[which] = millis();
+}
+uint32_t calcMsgDeltaTime( int which ) {
+  if ( which < 0 || which > 3 ) return 0;
+  metrics.msg_timings.dt_ms[which] = millis() - metrics.msg_timings.ts_ms[which];
+  return metrics.msg_timings.dt_ms[which];
+}
+
+void setAllByteTimestamps() {
+  for ( int i = 0; i < 4; i++ ) {
+    metrics.byte_timings.ts_us[i] = micros();
+  }
+}
+void setByteTimestamp( int which ) {
+  if ( which < 0 || which > 3 ) return;
+  metrics.byte_timings.ts_us[ which ] = micros();
+}
+uint32_t calcByteDeltaTime( int which ) {
+  if ( which < 0 || which > 3 ) return 0;
+  metrics.byte_timings.dt_us[ which ] = micros() - metrics.byte_timings.ts_us[which];
+  return metrics.byte_timings.dt_us[which];
+}
+void calcAllByteDeltaTime() {
+  for ( int i = 0; i < 4; i++ ) {
+    metrics.byte_timings.dt_us[i] = micros() - metrics.byte_timings.ts_us[i];
+  }
+}
+
+void triggerDemodDesaturation(int which) {
+  if ( which < 0 || which > 3 ) return;
+  channel[which].demod_state = DemodState::Deactive;
+  channel[which].demod_desat_ts = micros();
+  digitalWrite( channel[which].demod_pin, LOW); // switch off demod
+}
+
+bool updateDemodDesaturation( int which ) {
+  if ( which < 0 || which > 3 ) return false;
+
+  if ( channel[which].demod_state == DemodState::Active ) { // nothing to do
+    return true;
+  }
+
+  uint32_t dt_us = micros() - channel[which].demod_desat_ts;
+  if ( dt_us > 2000 ) { // 20ms
+    // renable demodulator
+    channel[which].demod_state = DemodState::Active;
+    digitalWrite( channel[which].demod_pin, HIGH );
+    return true;
+  }
+  return false;
+}
+
+// Small wrapper for how to update the recorded activity
+// level by some decay rate.
+void updateBearing() {
+
+
+  // We know that the baud rate is 9600, and there
+  // are 10 bits per byte on UART (+start & stop bits)
+  // Therefore, we expect 960 bytes per second, or
+  // 96 bytes per 100ms
+  const float bytes_per_ms = 960.0 / 1000.0;
+  const float max_bytes = bytes_per_ms * bearing_update_ms;
+
+
+  metrics.bearing.sum  = 0.0;
+  for ( int i = 0; i < 4; i++ ) {
+
+    bearing_activity[i] /= max_bytes;
+    metrics.bearing.sum += bearing_activity[i];
+
+    // filter this activity,
+    if ( bearing_activity[i] > 0.0 ) {
+
+      // Normalising and filtering
+      metrics.vectors.rx[i] = (metrics.vectors.rx[i] * 0.3 ) + ((bearing_activity[i]) * 0.7);
+
+    }
+
+  }
+
+
+  // Update bearing estimate.
+  float x = (metrics.vectors.rx[0] - metrics.vectors.rx[2]);
+  float y = (metrics.vectors.rx[3] - metrics.vectors.rx[1]);
+  metrics.bearing.theta = atan2( y, x );
+  metrics.bearing.mag = sqrt( pow(x, 2) + pow(y, 2));
+
+
+  // We zero activity, because vectors are implemented
+  // with decay.
+  zeroBearingActivity();
+}
+
+
+unsigned long tx_test;
+void loop() {
+
+  for ( int i = 0; i < 4; i++ ) {
+
+
+    parser_status_t parser_status = parser[i].getNextByte();
+
+    // If we got a byte, move the timestamp forwards to stop
+    // triggering a desaturation
+    if ( parser_status.bytes > 0 ) setByteTimestamp( i );
+
+    // If there has been no activity for some time, the
+    // demodulator is probably saturated (gain at max) so
+    // we trigger a desaturation.  Otherwise, just check
+    // whether the demodulator needs reactivating
+    if ( calcByteDeltaTime(i) > 30000 ) { // 30ms
+      triggerDemodDesaturation( i );
+      metrics.saturation.rx[i]++;
+      setByteTimestamp(i);
+    } else {
+      updateDemodDesaturation( i ); // will take 20ms to complete
+    }
+
+    // Log any activity
+    if ( parser_status.bytes > 0 ) {
+
+      // Continuous log of activity
+      metrics.activity.rx[i]++;
+
+      // Cyclical log, used to estimate bearing
+      // to neighbours
+      // increment bearing activity
+      bearing_activity[i] += 1.0;
+
+    }
+
+    // Log any errors
+    if ( parser_status.error != NO_ERROR ) {
+      metrics.errors.type[i][ parser_status.error ]++;
+    }
+
+    // Duplicated logging of this error - fix later?
+    if ( parser_status.error == ERR_BAD_CRC ) metrics.crc.fail[i]++;
+
+    // Got a message
+    if ( parser_status.bytes > 1 ) {
+
+      calcMsgDeltaTime(i);
+      setMsgTimestamp(i);
+
+      metrics.crc.pass[i]++;
+
       Serial.print(millis());
-      Serial.print(" ");
-      Serial.print("Port "); Serial.print(i); Serial.print(": ");
-      Serial.print( (char*)parser[i].msg );
-      Serial.print("(");
-      Serial.print(retval);
-      Serial.println(" bytes)");
-    }
+      Serial.print(",");
+      //      Serial.print("Port "); Serial.print(i); Serial.print(": ");
+      //      Serial.print( (char*)parser[i].msg );
+      Serial.print( bearing_activity[0] );
+      Serial.print(",");
+      Serial.print( metrics.activity.rx[0] );
+      //      Serial.print("(");
+      //      Serial.print( parser_status.bytes );
+      //      Serial.print(" bytes), fe: ");
+      //      Serial.print( *(channel[i].frame_errors) );
+      //      Serial.print(" sat: ");
+      //      Serial.println( metrics.saturation.rx[i]);
+      Serial.println();
+    } else if ( parser_status.bytes == 1 ) {
+      //      Serial.print("Port "); Serial.print(i); Serial.print(", error: "); Serial.println( parser_status.error );
+
+    } else if ( parser_status.bytes == 0 ) {
 
 
-  }
-
-  // Time to transmit?
-  if ( millis() - tx_test > 20 ) {
-    tx_test = millis();
-    for ( int i = 0; i < 4; i++ ) {
-      if ( channel[i].tx_phase == TxReleasePhase::Idle ) {
-
-
-        //      Serial.println("Doing Send!");
-
-        char buf[MAX_TX_BUF];
-        char msg[MAX_TX_BUF];
-        memset(msg, 0, sizeof( buf ));
-        memset(buf, 0, sizeof( buf ));
-        sprintf( msg, "tx%d-test", i );
-        int l = parser[ i ].formatIRMessage( (uint8_t*)buf, (uint8_t*)msg, strlen(msg) );
-        uartSendAndReleaseAsync( channel[ i ], (uint8_t*)buf, l);
-      }
-    }
-  }
-
-  for ( int i = 0; i < 4; i++ ) {
-    // Can check when tx is finished here
-    if ( channel[i].tx_release_done ) {
-
-      // Reset flag.
-      channel[i].tx_release_done = false;
     }
   }
 
 
-  //  delay(4);
+
+  if ( calcBearingDeltaTime() > bearing_update_ms ) {
+    setBearingTimestamp();
+    updateBearing();
+    Serial.println( metrics.bearing.sum, 4 );
+  }
+
+
+
+
+  //  for ( int i = 0; i < 4; i++ ) disableSercomRx( channel[i].hw );
+  //
+  //  for ( int i = 0; i < 4; i++ ) {
+  //    char buf[MAX_TX_BUF];
+  //    char msg[MAX_TX_BUF];
+  //    memset(msg, 0, sizeof( buf ));
+  //    memset(buf, 0, sizeof( buf ));
+  //    sprintf(msg, "port%d", i);
+  //    int len = parser[i].formatIRMessage( (uint8_t*)buf, (uint8_t*)msg, 5);
+  //    //Serial.print("Going to tx: "); Serial.println( buf );
+  //    channel[i].port->write( buf, len );
+  //    channel[i].port->flush();
+  //  }
+  //
+  //  for ( int i = 0; i < 4; i++ ) {
+  //    while ( channel[i].port->available() ) channel[i].port->read();
+  //    enableSercomRx( channel[i].hw );
+  //
+  //  }
+
 }
 
 

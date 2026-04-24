@@ -17038,6 +17038,15 @@
 		(uuid "7a4184e7-8e26-4442-ba49-96c8a76c4775")
 	)
 	(via
+		(at 117.2 83.8)
+		(size 0.6)
+		(drill 0.3)
+		(layers "F.Cu" "B.Cu")
+		(free yes)
+		(net 2)
+		(uuid "ba797ffd-32bd-441f-9928-3530f20ec2e3")
+	)
+	(via
 		(at 122.7 95.1)
 		(size 0.6)
 		(drill 0.3)

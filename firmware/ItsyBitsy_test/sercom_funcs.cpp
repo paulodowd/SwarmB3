@@ -23,10 +23,10 @@ volatile uint32_t port_D25_D24_frame_errors = 0;
 
 //IRParser_c parser[4] = { port_D12_D13, port_D25_D24, port_D18_D15, port_D1_D0 };
 UartChannel channel[4] = {
-  {SERCOM5, &port_D12_D13, 12, 13, &port_D12_D13_frame_errors, TxReleasePhase::Idle, false },
-  {SERCOM1, &port_D25_D24, 25, 24, &port_D25_D24_frame_errors, TxReleasePhase::Idle, false },
-  {SERCOM0, &port_D18_D15, 18, 15, &port_D18_D15_frame_errors, TxReleasePhase::Idle, false },
-  {SERCOM3, &port_D1_D0, 1, 0, &port_D1_D0_frame_errors, TxReleasePhase::Idle, false }
+  {SERCOM5, &port_D12_D13, 12, 13, DEMOD3_EN_PIN, DemodState::Active, 0, &port_D12_D13_frame_errors},
+  {SERCOM1, &port_D25_D24, 25, 24, DEMOD4_EN_PIN, DemodState::Active, 0, &port_D25_D24_frame_errors },
+  {SERCOM0, &port_D18_D15, 18, 15, DEMOD2_EN_PIN, DemodState::Active, 0, &port_D18_D15_frame_errors},
+  {SERCOM3, &port_D1_D0,    1,  0, DEMOD1_EN_PIN, DemodState::Active, 0, &port_D1_D0_frame_errors }
 };
 
 
@@ -130,44 +130,44 @@ void forcePinLow(uint8_t pin) {
   digitalWrite(pin, LOW);
 }
 
-bool uartSendAndReleaseAsync(UartChannel& ch, const uint8_t* data, size_t len) {
-  if (ch.tx_phase != TxReleasePhase::Idle) {
-    return false;
-  }
+//bool uartSendAndReleaseAsync(UartChannel& ch, const uint8_t* data, size_t len) {
+//  if (ch.tx_phase != TxReleasePhase::Idle) {
+//    return false;
+//  }
+//
+//  restoreSercomTx(ch.hw, ch.tx_pin);
+//
+//  ch.tx_release_done = false;
+//  ch.tx_phase = TxReleasePhase::WaitingForComplete;
+//
+//  clearUartTxc(ch.hw);
+//
+//  char buf[8];
+//  memset(buf, 0, sizeof( buf ));
+//
+//  for ( int i = 0; i < 8; i++ ) {
+//    buf[i] = 0x55;
+//
+//  }
+//  ch.port->write(buf, 8);
+//  ch.port->write(data, len);
+//  enableUartTxcInterrupt(ch.hw);
+//
+//  return true;
+//}
 
-  restoreSercomTx(ch.hw, ch.tx_pin);
-
-  ch.tx_release_done = false;
-  ch.tx_phase = TxReleasePhase::WaitingForComplete;
-
-  clearUartTxc(ch.hw);
-
-  char buf[8];
-  memset(buf, 0, sizeof( buf ));
-
-  for ( int i = 0; i < 8; i++ ) {
-    buf[i] = 0x55;
-
-  }
-  ch.port->write(buf, 8);
-  ch.port->write(data, len);
-  enableUartTxcInterrupt(ch.hw);
-
-  return true;
-}
-
-void handleTxCompleteInterrupt(UartChannel& ch) {
-  if (ch.hw->USART.INTFLAG.bit.TXC && ch.hw->USART.INTENSET.bit.TXC) {
-    disableUartTxcInterrupt(ch.hw);
-    clearUartTxc(ch.hw);
-
-    disableSercomTx(ch.hw);
-    forcePinLow(ch.tx_pin);
-
-    ch.tx_phase = TxReleasePhase::Idle;
-    ch.tx_release_done = true;
-  }
-}
+//void handleTxCompleteInterrupt(UartChannel& ch) {
+//  if (ch.hw->USART.INTFLAG.bit.TXC && ch.hw->USART.INTENSET.bit.TXC) {
+//    disableUartTxcInterrupt(ch.hw);
+//    clearUartTxc(ch.hw);
+//
+//    disableSercomTx(ch.hw);
+//    forcePinLow(ch.tx_pin);
+//
+//    ch.tx_phase = TxReleasePhase::Idle;
+//    ch.tx_release_done = true;
+//  }
+//}
 
 
 
@@ -428,87 +428,87 @@ void enableSercomTx(Sercom* hw) {
 
 
 void SERCOM3_0_Handler() {
-  //countFrameError( SERCOM0, port_D1_D0_frame_errors);
+  countFrameError( SERCOM0, port_D1_D0_frame_errors);
   port_D1_D0.IrqHandler();
   //handleTxCompleteInterrupt( channel[3] );
 
 }
 void SERCOM3_1_Handler() {
-  //countFrameError( SERCOM0, port_D1_D0_frame_errors);
+  countFrameError( SERCOM0, port_D1_D0_frame_errors);
   port_D1_D0.IrqHandler();
   //handleTxCompleteInterrupt( channel[3] );
 }
 void SERCOM3_2_Handler() {
-  //countFrameError( SERCOM0, port_D1_D0_frame_errors);
+  countFrameError( SERCOM0, port_D1_D0_frame_errors);
   port_D1_D0.IrqHandler();
   //handleTxCompleteInterrupt( channel[3] );
 }
 void SERCOM3_3_Handler() {
-  //countFrameError( SERCOM0, port_D1_D0_frame_errors);
+  countFrameError( SERCOM0, port_D1_D0_frame_errors);
   port_D1_D0.IrqHandler();
   //handleTxCompleteInterrupt( channel[3] );
 }
 
 
 void SERCOM0_0_Handler() {
-  //countFrameError( SERCOM0, port_D18_D15_frame_errors);
+  countFrameError( SERCOM0, port_D18_D15_frame_errors);
   port_D18_D15.IrqHandler();
   //handleTxCompleteInterrupt( channel[2] );
 }
 void SERCOM0_1_Handler() {
-  //countFrameError( SERCOM0, port_D18_D15_frame_errors);
+  countFrameError( SERCOM0, port_D18_D15_frame_errors);
   port_D18_D15.IrqHandler();
   //handleTxCompleteInterrupt( channel[2] );
 }
 void SERCOM0_2_Handler() {
-  //countFrameError( SERCOM0, port_D18_D15_frame_errors);
+  countFrameError( SERCOM0, port_D18_D15_frame_errors);
   port_D18_D15.IrqHandler();
   //handleTxCompleteInterrupt( channel[2] );
 }
 void SERCOM0_3_Handler() {
-  //countFrameError( SERCOM0, port_D18_D15_frame_errors);
+  countFrameError( SERCOM0, port_D18_D15_frame_errors);
   port_D18_D15.IrqHandler();
   //handleTxCompleteInterrupt( channel[2] );
 }
 
 void SERCOM1_0_Handler() {
-  //countFrameError( SERCOM1, port_D25_D24_frame_errors);
+  countFrameError( SERCOM1, port_D25_D24_frame_errors);
   port_D25_D24.IrqHandler();
   //handleTxCompleteInterrupt( channel[1] );
 }
 void SERCOM1_1_Handler() {
-  //countFrameError( SERCOM1, port_D25_D24_frame_errors);
+  countFrameError( SERCOM1, port_D25_D24_frame_errors);
   port_D25_D24.IrqHandler();
   //handleTxCompleteInterrupt( channel[1] );
 }
 void SERCOM1_2_Handler() {
-  //countFrameError( SERCOM1, port_D25_D24_frame_errors);
+  countFrameError( SERCOM1, port_D25_D24_frame_errors);
   port_D25_D24.IrqHandler();
   //handleTxCompleteInterrupt( channel[1] );
 }
 void SERCOM1_3_Handler() {
-  //countFrameError( SERCOM1, port_D25_D24_frame_errors);
+  countFrameError( SERCOM1, port_D25_D24_frame_errors);
   port_D25_D24.IrqHandler();
   //handleTxCompleteInterrupt( channel[1] );
 }
 
 void SERCOM5_0_Handler() {
-  //countFrameError( SERCOM5, port_D12_D13_frame_errors);
+  countFrameError( SERCOM5, port_D12_D13_frame_errors);
   port_D12_D13.IrqHandler();
   //handleTxCompleteInterrupt( channel[0] );
 }
 void SERCOM5_1_Handler() {
-  //countFrameError( SERCOM5, port_D12_D13_frame_errors);
+  countFrameError( SERCOM5, port_D12_D13_frame_errors);
   port_D12_D13.IrqHandler();
   //handleTxCompleteInterrupt( channel[0] );
 }
 void SERCOM5_2_Handler() {
-  //countFrameError( SERCOM5, port_D12_D13_frame_errors);
+  countFrameError( SERCOM5, port_D12_D13_frame_errors);
   port_D12_D13.IrqHandler();
   //handleTxCompleteInterrupt( channel[0] );
 }
 void SERCOM5_3_Handler() {
-  //countFrameError( SERCOM5, port_D12_D13_frame_errors);
+  countFrameError( SERCOM5, port_D12_D13_frame_errors);
   port_D12_D13.IrqHandler();
   //handleTxCompleteInterrupt( channel[0] );
 }

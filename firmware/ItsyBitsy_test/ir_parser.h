@@ -5,16 +5,17 @@
 #include "Arduino.h"
 #include "config.h"
 
-#define ERR_RESYNC        1   // getting start byte again
-#define ERR_BAD_LENGTH    2   // len byte error
-#define ERR_BAD_CRC       3   // crc error
-#define ERR_BYTE_TIMEOUT  4   // too much time between bytes
+#define NO_ERROR          4
+#define ERR_RESYNC        0   // getting start byte again
+#define ERR_BAD_LENGTH    1   // len byte error
+#define ERR_BAD_CRC       2   // crc error
+#define ERR_BYTE_TIMEOUT  3   // too much time between bytes
 
 #define NUM_CRC_BYTES       2 // using CRC16, so 2 bytes.
 #define NUM_HEADER_BYTES    2 // start byte and message length byte
 
-#define REPORT_ONE_BYTES    1 
-#define REPORT_ZERO_BYTES   0
+#define REPORT_ONE_BYTES    true 
+#define REPORT_ZERO_BYTES   false
 
 #define START_BYTE  '~'
 #define ESC_BYTE    '^'
@@ -25,13 +26,16 @@
 #define RX_WAIT_LEN   1
 #define RX_READ_ENC   2
 
+typedef struct {
+  uint8_t bytes;
+  uint8_t error;
+} parser_status_t;
+
 class IRParser_c {
 
   public:
 
-    
-    
-    uint8_t rx_state;                           // Tracks receiving state (RX_...).
+    uint8_t parser_state;                           // Tracks receiving state (RX_...).
     bool    escape_next;                        // Flag to perform XOR to escape next byte
     uint8_t enc_remain;                         // Counts down the number of encoded bytes to read in
     uint8_t msg[MAX_MSG];                       // Persistent buffer of the last message received
@@ -39,13 +43,15 @@ class IRParser_c {
     uint8_t dec_buf[MAX_MSG + NUM_CRC_BYTES ];  // Temporary buffer of incoming decoded bytes
     uint8_t dec_pos;                            // Tracks decoded byte buffer position
     uint8_t esc_count;                          // Counts up how many bytes that were escaped
-    uint32_t timeout_ts;                   // timestamp to watch for a lapse in receiving bytes
+    uint32_t timeout_ts;                        // timestamp to watch for a lapse in receiving bytes
+    uint8_t n_bytes;                            // number of bytes received
+    uint8_t error_code;
 
     IRParser_c( Stream& serial ): port(serial) {}
 
     void begin();
     void reset();
-    int getNextByte( );
+    parser_status_t getNextByte( );
     void copyMsg( uint8_t * dest );
 
     char CRC8(uint8_t * bytes, uint8_t len);

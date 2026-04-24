@@ -6,7 +6,7 @@ void IRParser_c::begin() {
 }
 
 void IRParser_c::reset() {
-  rx_state    = RX_WAIT_START;
+  parser_state    = RX_WAIT_START;
 
   dec_pos     = 0;
   enc_remain  = 0;
@@ -32,7 +32,12 @@ void IRParser_c:: copyMsg( uint8_t * dest ) {
 
 }
 
-int IRParser_c::getNextByte(  ) {
+parser_status_t IRParser_c::getNextByte(  ) {
+
+  // Assume no bytes received, no error
+  parser_status_t status;
+  status.bytes = REPORT_ZERO_BYTES;
+  status.error = NO_ERROR;
 
   // Note: not using while.  We don't want to
   // block the code.  Instead, we'll call this
@@ -47,31 +52,37 @@ int IRParser_c::getNextByte(  ) {
 
     // We're either in WAIT_START or WAIT LEN and
     // get the start byte
-    if (rx_state != RX_READ_ENC && b == START_BYTE) {
+    if (parser_state != RX_READ_ENC && b == START_BYTE) {
       reset();
 
       // If in WAIT_START, no error, indicate 1 byte
       // received.
-      if ( rx_state == RX_WAIT_START ) {
-        rx_state = RX_WAIT_LEN;
-        return REPORT_ONE_BYTES;
+      if ( parser_state == RX_WAIT_START ) {
+        parser_state = RX_WAIT_LEN;
+        status.bytes = REPORT_ONE_BYTES;
+        status.error = NO_ERROR;
+        return status;
       }
 
 
-      rx_state = RX_WAIT_LEN;
+      parser_state = RX_WAIT_LEN;
 
       // Must be in WAIT_LEN, shouldn't have got the
       // start byte.
-      return -ERR_RESYNC;
+      status.bytes = REPORT_ONE_BYTES;
+      status.error = ERR_RESYNC;
+      return status;
     }
 
     // Read length (RAW, never escaped)
-    if (rx_state == RX_WAIT_LEN) {
+    if (parser_state == RX_WAIT_LEN) {
 
       if ( b == 0 || b > MAX_MSG ) {
 
         reset();
-        return -ERR_BAD_LENGTH;
+        status.bytes = REPORT_ONE_BYTES;
+        status.error = ERR_BAD_LENGTH;
+        return status;
       }
 
       // Add 2 because we also need to read in
@@ -80,14 +91,16 @@ int IRParser_c::getNextByte(  ) {
       enc_remain = b + NUM_CRC_BYTES;
 
       //port.print("set encRemain to "); port.println( encRemain );
-      rx_state = RX_READ_ENC;
+      parser_state = RX_READ_ENC;
 
       // No error, just indicate 1 byte received
-      return REPORT_ONE_BYTES;
+      status.bytes = REPORT_ONE_BYTES;
+      status.error = NO_ERROR;
+      return status;
     }
 
     // Only handle escaping INSIDE encoded region
-    if (rx_state == RX_READ_ENC) {
+    if (parser_state == RX_READ_ENC) {
 
       // Flag to escape next byte on next iteration.
       // Note, we don't increment our decoded byte
@@ -97,7 +110,9 @@ int IRParser_c::getNextByte(  ) {
         escape_next = true;
         esc_count++;
         // No error, just indicate 1 byte received
-        return REPORT_ONE_BYTES;
+        status.bytes = REPORT_ONE_BYTES;
+        status.error = NO_ERROR;
+        return status;
       }
 
 
@@ -117,8 +132,11 @@ int IRParser_c::getNextByte(  ) {
           //          }
           //          port.println( encRemain );
           reset();
-          rx_state = RX_WAIT_LEN;
-          return -ERR_RESYNC;
+          parser_state = RX_WAIT_LEN;
+          // No error, just indicate 1 byte received
+          status.bytes = REPORT_ONE_BYTES;
+          status.error = ERR_RESYNC;
+          return status;
         }
 
       }
@@ -141,16 +159,20 @@ int IRParser_c::getNextByte(  ) {
           msg_len = payload_len;
           reset();
 
-//                    digitalWrite( 13, HIGH );
+          //                    digitalWrite( 13, HIGH );
 
           uint8_t total_decoded;
           total_decoded = NUM_HEADER_BYTES + msg_len + NUM_CRC_BYTES + esc_count;
-          return total_decoded;
+          status.bytes = total_decoded;
+          status.error = NO_ERROR;
+          return status;
 
         } else {
           //port.println("Bad CRC");
           reset();
-          return -ERR_BAD_CRC;
+          status.bytes = REPORT_ONE_BYTES;
+          status.error = ERR_BAD_CRC;
+          return status;
         }
       }
     }
@@ -159,22 +181,24 @@ int IRParser_c::getNextByte(  ) {
   // If we started to receive a message but we
   // didn't get any more bytes, indicate the
   // timeout error.  We also reset the parser
-  // because we need to have consecutive bytes 
+  // because we need to have consecutive bytes
   // to get a correct message (CRC).
-//  if ( rx_state != RX_WAIT_START ) {
-//    if ( byte_timeout_ms > 0 ) {
-//
-//      // TODO: we know the baudrate, I don't think
-//      // we need to pass in byte_timeout_ms here.
-//      if ( millis() - timeout_ts > byte_timeout_ms ) {
-//        reset();
-//        return -ERR_BYTE_TIMEOUT;
-//      }
-//    }
-//  }
+  //  if ( parser_state != RX_WAIT_START ) {
+  //    if ( byte_timeout_ms > 0 ) {
+  //
+  //      // TODO: we know the baudrate, I don't think
+  //      // we need to pass in byte_timeout_ms here.
+  //      if ( millis() - timeout_ts > byte_timeout_ms ) {
+  //        reset();
+  //        return -ERR_BYTE_TIMEOUT;
+  //      }
+  //    }
+  //  }
 
   // Nothing happened
-  return REPORT_ZERO_BYTES;
+  status.bytes = REPORT_ZERO_BYTES;
+  status.error = NO_ERROR;
+  return status;
 }
 
 
