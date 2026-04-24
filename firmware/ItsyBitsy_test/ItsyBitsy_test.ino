@@ -40,7 +40,7 @@ ircomm_metrics_t metrics;
 
 
 uint32_t bearing_ts;
-const uint32_t bearing_update_ms = 100;
+const uint32_t bearing_update_us = 100000;
 float bearing_activity[4];
 
 // A record of byte activity per
@@ -158,10 +158,10 @@ void setup() {
 
 
 void setBearingTimestamp() {
-  bearing_ts = millis();
+  bearing_ts = micros();
 }
 uint32_t calcBearingDeltaTime() {
-  return millis() - bearing_ts;
+  return micros() - bearing_ts;
 }
 
 void zeroBearingActivity() {
@@ -235,23 +235,19 @@ void updateBearing() {
   // are 10 bits per byte on UART (+start & stop bits)
   // Therefore, we expect 960 bytes per second, or
   // 96 bytes per 100ms
-  const float bytes_per_ms = 960.0 / 1000.0;
-  const float max_bytes = bytes_per_ms * bearing_update_ms;
+  const float bytes_per_us = 960.0 / 1000000.0;
+  const float max_bytes = bytes_per_us * bearing_update_us;
 
 
+  const float alpha = 0.25;
   metrics.bearing.sum  = 0.0;
   for ( int i = 0; i < 4; i++ ) {
 
     bearing_activity[i] /= max_bytes;
     metrics.bearing.sum += bearing_activity[i];
 
-    // filter this activity,
-    if ( bearing_activity[i] > 0.0 ) {
-
-      // Normalising and filtering
-      metrics.vectors.rx[i] = (metrics.vectors.rx[i] * 0.3 ) + ((bearing_activity[i]) * 0.7);
-
-    }
+    // Normalising and filtering
+    metrics.vectors.rx[i] = (metrics.vectors.rx[i] * (1.0-alpha) ) + ((bearing_activity[i]) * alpha);
 
   }
 
@@ -266,17 +262,18 @@ void updateBearing() {
   // We zero activity, because vectors are implemented
   // with decay.
   zeroBearingActivity();
+
 }
 
 
-unsigned long tx_test;
 void loop() {
 
+  // First, check for new bytes on each of the 4 receivers,
+  // logging any metrics and handling a complete message.
   for ( int i = 0; i < 4; i++ ) {
 
-
     parser_status_t parser_status = parser[i].getNextByte();
-
+    
     // If we got a byte, move the timestamp forwards to stop
     // triggering a desaturation
     if ( parser_status.bytes > 0 ) setByteTimestamp( i );
@@ -314,7 +311,7 @@ void loop() {
     // Duplicated logging of this error - fix later?
     if ( parser_status.error == ERR_BAD_CRC ) metrics.crc.fail[i]++;
 
-    // Got a message
+    // Decide what to do with a message
     if ( parser_status.bytes > 1 ) {
 
       calcMsgDeltaTime(i);
@@ -322,37 +319,20 @@ void loop() {
 
       metrics.crc.pass[i]++;
 
-      Serial.print(millis());
-      Serial.print(",");
-      //      Serial.print("Port "); Serial.print(i); Serial.print(": ");
-      //      Serial.print( (char*)parser[i].msg );
-      Serial.print( bearing_activity[0] );
-      Serial.print(",");
-      Serial.print( metrics.activity.rx[0] );
-      //      Serial.print("(");
-      //      Serial.print( parser_status.bytes );
-      //      Serial.print(" bytes), fe: ");
-      //      Serial.print( *(channel[i].frame_errors) );
-      //      Serial.print(" sat: ");
-      //      Serial.println( metrics.saturation.rx[i]);
-      Serial.println();
-    } else if ( parser_status.bytes == 1 ) {
-      //      Serial.print("Port "); Serial.print(i); Serial.print(", error: "); Serial.println( parser_status.error );
+      // TODO: transfer message, ready for i2c request
 
-    } else if ( parser_status.bytes == 0 ) {
-
-
-    }
+    } 
   }
 
-
-
-  if ( calcBearingDeltaTime() > bearing_update_ms ) {
+  // At a much slower rate, update the bearing estimate.
+  if ( calcBearingDeltaTime() > bearing_update_us ) {
     setBearingTimestamp();
     updateBearing();
-    Serial.println( metrics.bearing.sum, 4 );
   }
 
+
+  // TODO: schedule in a transmit, if a message has been setup.
+  
 
 
 

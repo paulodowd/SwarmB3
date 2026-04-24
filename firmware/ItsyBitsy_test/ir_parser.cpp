@@ -58,7 +58,9 @@ parser_status_t IRParser_c::getNextByte(  ) {
       // If in WAIT_START, no error, indicate 1 byte
       // received.
       if ( parser_state == RX_WAIT_START ) {
+
         parser_state = RX_WAIT_LEN;
+
         status.bytes = REPORT_ONE_BYTES;
         status.error = NO_ERROR;
         return status;
@@ -80,6 +82,7 @@ parser_status_t IRParser_c::getNextByte(  ) {
       if ( b == 0 || b > MAX_MSG ) {
 
         reset();
+
         status.bytes = REPORT_ONE_BYTES;
         status.error = ERR_BAD_LENGTH;
         return status;
@@ -96,6 +99,7 @@ parser_status_t IRParser_c::getNextByte(  ) {
       // No error, just indicate 1 byte received
       status.bytes = REPORT_ONE_BYTES;
       status.error = NO_ERROR;
+
       return status;
     }
 
@@ -174,9 +178,20 @@ parser_status_t IRParser_c::getNextByte(  ) {
           status.error = ERR_BAD_CRC;
           return status;
         }
-      }
-    }
-  }
+      } // if enc_remain == 0 [end of frame]
+
+
+      status.bytes = REPORT_ONE_BYTES;
+      status.error = NO_ERROR;
+      return status;
+
+    } // if parser_state == RX_READ_ENC
+    
+    status.bytes = REPORT_ONE_BYTES;
+    status.error = NO_ERROR;
+    return status;
+
+  } // if port.available()
 
   // If we started to receive a message but we
   // didn't get any more bytes, indicate the

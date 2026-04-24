@@ -5,17 +5,17 @@
 #include "Arduino.h"
 #include "config.h"
 
-#define NO_ERROR          4
 #define ERR_RESYNC        0   // getting start byte again
 #define ERR_BAD_LENGTH    1   // len byte error
 #define ERR_BAD_CRC       2   // crc error
 #define ERR_BYTE_TIMEOUT  3   // too much time between bytes
+#define NO_ERROR          4
 
 #define NUM_CRC_BYTES       2 // using CRC16, so 2 bytes.
 #define NUM_HEADER_BYTES    2 // start byte and message length byte
 
-#define REPORT_ONE_BYTES    true 
-#define REPORT_ZERO_BYTES   false
+#define REPORT_ONE_BYTES    1 
+#define REPORT_ZERO_BYTES   0
 
 #define START_BYTE  '~'
 #define ESC_BYTE    '^'
