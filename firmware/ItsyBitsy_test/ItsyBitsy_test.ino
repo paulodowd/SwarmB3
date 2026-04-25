@@ -29,28 +29,19 @@ typedef struct {
   ir_activity_t     activity;
   ir_saturation_t   saturation;
   ir_errors_t       errors;
-  ir_frame_errors_t frame_errors;
+  ir_frame_errors_t frame_errors; // this one needs integrating with channel[]
   ir_msg_timings_t  msg_timings;
-  ir_byte_timings_t  byte_timings;
+  ir_byte_timings_t byte_timings;
   ir_vectors_t      vectors;
   ir_bearing_t      bearing;
   ir_sensors_t      sensors;
+  ir_tx_timings_t   tx_timings;
 } ircomm_metrics_t;
 ircomm_metrics_t metrics;
 
 
-uint32_t bearing_ts;
-const uint32_t bearing_update_us = 100000;
+
 float bearing_activity[4];
-
-// A record of byte activity per
-// receiver which is periodically
-// reset to 0.  Allows for the
-// estimation of bearing to other
-// transmitting boards/robots.
-unsigned long tx_ts;     // periodic transmit
-unsigned long led_ts;    // LED time stamp
-
 
 // On this new board, each rx demodulator and
 // pair of IR LEDs are attached to independent
@@ -62,15 +53,18 @@ unsigned long led_ts;    // LED time stamp
 // represent this in the overall config is
 // to make the tx and rx structs into
 // arrays, 1 for each uart.
-typedef struct { // 31 bytes
+// We will still need a top-most level config
+// to decide if the board is going to use all
+// tx independently, or in broadcast, etc
+typedef struct {
+  ir_params_t     general;
   ir_tx_params_t  tx[4];          // 11 bytes
   ir_rx_params_t  rx[4];          // 20 bytes
 } ircomm_config_t;
 ircomm_config_t config;
 
-volatile byte tx_buf[4][MAX_TX_BUF];
 
-
+volatile uint8_t tx_buf[4][MAX_TX_BUF];
 
 
 void dumpSercomCtrla(Sercom* hw) {
@@ -110,20 +104,52 @@ void sercomInvert(Sercom* hw, bool invertTx, bool invertRx) {
 }
 
 
+// Reading #define from config.h to give the board a default
+// configuration.  All settings can be reconfigured over i2c
+void configureFromConfigH() {
+
+  // Top level, general config
+  config.general.flags.bits.broadcast     = BROADCAST;
+  config.general.flags.bits.bidirectional = BIDIRECTIONAL;
+  config.general.bearing_update_us        = BEARING_UPDATE_US;
+  config.general.bearing_alpha            = BEARING_ALPHA;
+  config.general.preamble_byte            = TX_PREAMBLE_BYTE;
+
+  // Config per receiver/uart
+  for ( int i = 0; i < 4; i++ ) {
+    config.tx[i].flags.bits.desync  = TX_DESYNC;
+    config.tx[i].repeat             = TX_REPEAT;
+    config.tx[i].predict_multi      = TX_PREDICT_MULTI;
+    config.tx[i].defer_multi        = TX_DEFER_MULTI;
+    config.tx[i].preamble_repeat    = TX_PREAMBLE_REPEAT;
+    config.tx[i].interval_ms        = TX_INTERVAL_MS;
+    config.tx[i].base_ms            = TX_BASE_MS;
+    config.tx[i].len                = TX_LEN;
+
+    config.rx[i].flags.bits.overrun = RX_OVERRUN;
+    config.rx[i].flags.bits.enabled = RX_ENABLED;
+    config.rx[i].timeout_multi      = RX_TIMEOUT_MULTI;
+    config.rx[i].saturation_us      = RX_SATURATION_US;
+    config.rx[i].desaturation_us    = RX_DESATURATION_US;
+  }
+}
+
+
 void setup() {
 
   Serial.begin(115200);
   while (!Serial);
   Serial.println("Reset");
 
-  //  while (!Serial) {
-  //  }
 
+ 
   pinMode( DEMOD1_EN_PIN, OUTPUT);
   pinMode( DEMOD2_EN_PIN, OUTPUT);
   pinMode( DEMOD3_EN_PIN, OUTPUT);
   pinMode( DEMOD4_EN_PIN, OUTPUT);
 
+  // TODO: set after loading in config
+  // Start with all receivers active
   digitalWrite( DEMOD1_EN_PIN, HIGH);
   digitalWrite( DEMOD2_EN_PIN, HIGH);
   digitalWrite( DEMOD3_EN_PIN, HIGH);
@@ -148,20 +174,35 @@ void setup() {
   // 58 kHz output on D4
   setup58kHz();
 
+  // Clear config and set
+  memset( (void*)&config, 0, sizeof( config ));
+  configureFromConfigH();
+
+  // Clear and Setup initial metrics
   memset( (void*)&metrics, 0, sizeof( metrics));
   setAllByteTimestamps();
   setAllMsgTimestamps();
   setBearingTimestamp();
+
+
+  // Debugging
+  for ( int i = 0; i < 4; i++ ) {
+    char msg[32];
+    memset( (void*)msg, 0, sizeof( msg ));
+    memset( (void*)tx_buf[i], 0, sizeof( tx_buf[i] ));
+    sprintf((char*)msg, "paul test %d", i );
+    config.tx[i].len = parser[i].formatIRMessage( (uint8_t*)tx_buf[i], (uint8_t*)msg, strlen(msg));
+  }
 
   //  Serial.println("Setup complete");
 }
 
 
 void setBearingTimestamp() {
-  bearing_ts = micros();
+  metrics.bearing.us_ts = micros();
 }
 uint32_t calcBearingDeltaTime() {
-  return micros() - bearing_ts;
+  return micros() - metrics.bearing.us_ts;
 }
 
 void zeroBearingActivity() {
@@ -202,25 +243,104 @@ void calcAllByteDeltaTime() {
   }
 }
 
-void triggerDemodDesaturation(int which) {
+void triggerTx( int which ) {
   if ( which < 0 || which > 3 ) return;
-  channel[which].demod_state = DemodState::Deactive;
-  channel[which].demod_desat_ts = micros();
+
+  // TODO: add check to config for whether this happens
+  disableDemodulator( which, DemodState::Deactive );
+
+  // Capture when this happened
+  metrics.tx_timings.last_us_ts[which] = micros();
+
+  channel[which].tx_state = TxState::Sending;
+
+  channel[which].port->write( (uint8_t*)tx_buf[which], config.tx[which].len );
+
+}
+
+bool updateTx( int which ) {
+  if ( which < 0 || which > 3 ) return false;
+
+
+  // Already complete? Nothing to do.
+  if ( channel[which].tx_state == TxState::Idle ) return true;
+
+  if ( isUartTxComplete(channel[which].hw ) ) {
+
+    // Set tx flag back to idle
+    channel[which].tx_state = TxState::Idle;
+
+    // Capture duration
+    uint32_t dt = micros() - metrics.tx_timings.last_us_ts[which];
+    metrics.tx_timings.duration_us[which] = (uint16_t)dt;
+
+    // TODO: check config for whether this is happening
+    enableDemodulator( which );
+
+    return true;
+  }
+
+  return false;
+}
+
+void resetRxBuffers( int which ) {
+  if ( which < 0 || which > 3 ) return;
+
+  // clear hw buffer
+  clearSercomRxBuffer( channel[which].hw );
+
+  // Clear arduino object buffer
+  while ( channel[which].port->available() ) channel[which].port->read();
+
+}
+
+void disableDemodulator( int which, DemodState d_state ) {
+  if ( which < 0 || which > 3 ) return;
+
+  channel[which].demod_state = d_state;
+  channel[which].demod_ms_ts = micros();
   digitalWrite( channel[which].demod_pin, LOW); // switch off demod
+}
+
+void enableDemodulator( int which ) {
+  if ( which < 0 || which > 3 ) return;
+
+  // Clear out junk or anything old
+  resetRxBuffers( which );
+
+  // renable demodulator
+  channel[which].demod_state = DemodState::Active;
+  digitalWrite( channel[which].demod_pin, HIGH );
+}
+
+bool triggerDemodDesaturation(int which) {
+  if ( which < 0 || which > 3 ) return false;
+
+  // Avoid triggering if the rx demodulator is
+  // already deactive (either from a desautration
+  // or whilst transmitting)
+  if ( channel[which].demod_state == DemodState::Deactive ) return false;
+
+  disableDemodulator(which, DemodState::Desaturating );
+
+  return true;
 }
 
 bool updateDemodDesaturation( int which ) {
   if ( which < 0 || which > 3 ) return false;
 
-  if ( channel[which].demod_state == DemodState::Active ) { // nothing to do
-    return true;
-  }
+  if ( channel[which].demod_state != DemodState::Desaturating ) return false;
 
-  uint32_t dt_us = micros() - channel[which].demod_desat_ts;
-  if ( dt_us > 2000 ) { // 20ms
-    // renable demodulator
-    channel[which].demod_state = DemodState::Active;
-    digitalWrite( channel[which].demod_pin, HIGH );
+  uint32_t dt_us = micros() - channel[which].demod_ms_ts;
+  if ( dt_us > (uint32_t)config.rx[which].desaturation_us ) {
+
+    enableDemodulator( which );
+
+    // Advance the byte timestamp so that we don't
+    // trigger another desaturation in the next
+    // iteration
+    setByteTimestamp( which );
+
     return true;
   }
   return false;
@@ -236,7 +356,7 @@ void updateBearing() {
   // Therefore, we expect 960 bytes per second, or
   // 96 bytes per 100ms
   const float bytes_per_us = 960.0 / 1000000.0;
-  const float max_bytes = bytes_per_us * bearing_update_us;
+  const float max_bytes = bytes_per_us * config.general.bearing_update_us;
 
 
   const float alpha = 0.25;
@@ -247,7 +367,7 @@ void updateBearing() {
     metrics.bearing.sum += bearing_activity[i];
 
     // Normalising and filtering
-    metrics.vectors.rx[i] = (metrics.vectors.rx[i] * (1.0-alpha) ) + ((bearing_activity[i]) * alpha);
+    metrics.vectors.rx[i] = (metrics.vectors.rx[i] * (1.0 - alpha) ) + ((bearing_activity[i]) * alpha);
 
   }
 
@@ -262,33 +382,24 @@ void updateBearing() {
   // We zero activity, because vectors are implemented
   // with decay.
   zeroBearingActivity();
-
 }
 
 
+static unsigned long test_tx;
 void loop() {
 
   // First, check for new bytes on each of the 4 receivers,
-  // logging any metrics and handling a complete message.
+  // logging any metrics/errors and handling a complete message.
   for ( int i = 0; i < 4; i++ ) {
 
+    // Skip if the demodulator is deactive.
+    if ( channel[i].demod_state == DemodState::Deactive ) continue;
+
     parser_status_t parser_status = parser[i].getNextByte();
-    
+
     // If we got a byte, move the timestamp forwards to stop
     // triggering a desaturation
     if ( parser_status.bytes > 0 ) setByteTimestamp( i );
-
-    // If there has been no activity for some time, the
-    // demodulator is probably saturated (gain at max) so
-    // we trigger a desaturation.  Otherwise, just check
-    // whether the demodulator needs reactivating
-    if ( calcByteDeltaTime(i) > 30000 ) { // 30ms
-      triggerDemodDesaturation( i );
-      metrics.saturation.rx[i]++;
-      setByteTimestamp(i);
-    } else {
-      updateDemodDesaturation( i ); // will take 20ms to complete
-    }
 
     // Log any activity
     if ( parser_status.bytes > 0 ) {
@@ -312,7 +423,15 @@ void loop() {
     if ( parser_status.error == ERR_BAD_CRC ) metrics.crc.fail[i]++;
 
     // Decide what to do with a message
+    // Note, we will always get a return of 1 byte unless
+    // it is a CRC-pass message.
     if ( parser_status.bytes > 1 ) {
+
+
+      // Debug
+      Serial.print("Port "); Serial.print(i);
+      Serial.print(" Got message: ");
+      Serial.println( (char*)parser[i].msg);
 
       calcMsgDeltaTime(i);
       setMsgTimestamp(i);
@@ -320,43 +439,54 @@ void loop() {
       metrics.crc.pass[i]++;
 
       // TODO: transfer message, ready for i2c request
+      // and so it isn't over-written by the parser with
+      // the next full message received
 
-    } 
+    }
+  }
+
+  // Checking for demodulator saturation, calling desaturation
+  // Only valid if the demodulator is active in the first place.
+  // Demodulator could be disabled by an on-going transmit
+  for ( int i = 0; i < 4; i++ ) {
+
+    if ( channel[i].demod_state == DemodState::Deactive ) {
+      continue;
+
+    } else if ( channel[i].demod_state == DemodState::Desaturating ) {
+      updateDemodDesaturation( i );
+
+    } else if ( channel[i].demod_state == DemodState::Active ) {
+
+      // If there has been no activity for some time, the
+      // demodulator is probably saturated (gain at max) so
+      // we trigger a desaturation.  Otherwise, just check
+      // whether the demodulator needs reactivating
+      if ( calcByteDeltaTime(i) > (uint32_t)config.rx[i].saturation_us ) { // 30ms
+
+        triggerDemodDesaturation( i );
+        metrics.saturation.rx[i]++;
+      }
+    }
   }
 
   // At a much slower rate, update the bearing estimate.
-  if ( calcBearingDeltaTime() > bearing_update_us ) {
+  if ( calcBearingDeltaTime() > config.general.bearing_update_us ) {
     setBearingTimestamp();
     updateBearing();
   }
 
 
   // TODO: schedule in a transmit, if a message has been setup.
-  
-
-
-
-  //  for ( int i = 0; i < 4; i++ ) disableSercomRx( channel[i].hw );
-  //
-  //  for ( int i = 0; i < 4; i++ ) {
-  //    char buf[MAX_TX_BUF];
-  //    char msg[MAX_TX_BUF];
-  //    memset(msg, 0, sizeof( buf ));
-  //    memset(buf, 0, sizeof( buf ));
-  //    sprintf(msg, "port%d", i);
-  //    int len = parser[i].formatIRMessage( (uint8_t*)buf, (uint8_t*)msg, 5);
-  //    //Serial.print("Going to tx: "); Serial.println( buf );
-  //    channel[i].port->write( buf, len );
-  //    channel[i].port->flush();
-  //  }
-  //
-  //  for ( int i = 0; i < 4; i++ ) {
-  //    while ( channel[i].port->available() ) channel[i].port->read();
-  //    enableSercomRx( channel[i].hw );
-  //
-  //  }
+  // We need to write a non-block transmit operation
+//  if ( millis() - test_tx > 1000 ) {
+//    test_tx = millis();
+//    triggerTx(0);
+//  }
 
 }
+
+
 
 
 

@@ -23,10 +23,10 @@ volatile uint32_t port_D25_D24_frame_errors = 0;
 
 //IRParser_c parser[4] = { port_D12_D13, port_D25_D24, port_D18_D15, port_D1_D0 };
 UartChannel channel[4] = {
-  {SERCOM5, &port_D12_D13, 12, 13, DEMOD3_EN_PIN, DemodState::Active, 0, &port_D12_D13_frame_errors},
-  {SERCOM1, &port_D25_D24, 25, 24, DEMOD4_EN_PIN, DemodState::Active, 0, &port_D25_D24_frame_errors },
-  {SERCOM0, &port_D18_D15, 18, 15, DEMOD2_EN_PIN, DemodState::Active, 0, &port_D18_D15_frame_errors},
-  {SERCOM3, &port_D1_D0,    1,  0, DEMOD1_EN_PIN, DemodState::Active, 0, &port_D1_D0_frame_errors }
+  {SERCOM5, &port_D12_D13, 12, 13, DEMOD3_EN_PIN, DemodState::Active, 0, TxState::Idle, &port_D12_D13_frame_errors},
+  {SERCOM1, &port_D25_D24, 25, 24, DEMOD4_EN_PIN, DemodState::Active, 0, TxState::Idle, &port_D25_D24_frame_errors },
+  {SERCOM0, &port_D18_D15, 18, 15, DEMOD2_EN_PIN, DemodState::Active, 0, TxState::Idle, &port_D18_D15_frame_errors},
+  {SERCOM3, &port_D1_D0,    1,  0, DEMOD1_EN_PIN, DemodState::Active, 0, TxState::Idle, &port_D1_D0_frame_errors }
 };
 
 

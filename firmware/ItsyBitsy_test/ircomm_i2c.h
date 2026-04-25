@@ -82,6 +82,11 @@ typedef struct  {
   uint32_t pass[4];   // 4 * 4 = 16bytes
 } ir_crc_t;
 
+typedef struct {
+  uint32_t last_us_ts[4]; // 4x4 bytes
+  uint16_t duration_us[4]; // 4x2 bytes
+} ir_tx_timings_t;
+
 // Contains a simple count of byte activity
 // per receiver.  Used to estimate bearing
 // elsewhere.
@@ -104,9 +109,10 @@ typedef struct {
 //      each receiver have cancelled out.
 // Sum: Pre-normalised sum of rx counts used.
 typedef struct  {
-  float theta;
-  float mag;
-  float sum;
+  uint32_t us_ts;     // 4 bytes
+  float theta;                // 4
+  float mag;                  // 4
+  float sum;                  // 4
 } ir_bearing_t;
 
 // Used to store a count of frame errors at
@@ -169,10 +175,8 @@ typedef struct {      // total = 17 bytes
   union {                     // 1 byte
     uint8_t all_flags;        // to access all flags at once
     struct {
-      uint8_t defer           : 1; // if received a byte, defer tx?
       uint8_t desync          : 1; // randomise period?
-      uint8_t broadcast       : 1; // = send in all directions?
-      uint8_t reserved        : 5; // 3 more bools available
+      uint8_t reserved        : 7; // 
     } bits;
   } flags;
   uint32_t repeat;            // 1: how many repeated IR transmissions?
@@ -181,7 +185,7 @@ typedef struct {      // total = 17 bytes
   uint8_t  preamble_repeat;   // 1: how many repeated preamble bytes before transmission?
   uint32_t interval_ms;       // 4: periodic:  current ms period to send messages
   uint32_t base_ms;           // 4: min tx period allowable
-  uint8_t  len;            // 4: how long is the message to transmit?
+  uint8_t  len;               // 4: how long is the message to transmit?
 } ir_tx_params_t;
 
 
@@ -192,26 +196,30 @@ typedef struct {       // total = 8 bytes.
     uint8_t all_flags;             // to access all flags at once
     struct {
       uint8_t overrun         : 1; // complete recieve outside period?
-      uint8_t desync          : 1; // randomise period?
       uint8_t enabled         : 1; // receiver available to use?
-      uint8_t reserved        : 5; // randomise rx cycling
+      uint8_t reserved        : 6; // randomise rx cycling
+    } bits;
+  } flags;
+  uint8_t   timeout_multi;      //  1: If we haven't received a consecutive byte, timeout
+  uint16_t  saturation_us;      //  2: Rx seems to saturate, watch for 0 byte activity.
+  uint16_t  desaturation_us;    //  2: How long to desaturation for?
+} ir_rx_params_t;
+
+typedef struct {
+  union {                           // 1 bytes
+    uint8_t all_flags;             // to access all flags at once
+    struct {
+      uint8_t broadcast       : 1; // tx combined, or independent?
+      uint8_t bidirectional   : 1;
+      uint8_t reserved        : 6; // not used
     } bits;
   } flags;
 
-  // Making some changes:
-  // period_base_ms: by using a 16 bit number, we can set a period of 
-  //                 65 seconds.  That seems plenty.  For anything more
-  //                 the user might as well exercise manual control of
-  //                 which receiver.  
-  // timeout_multi: we only consider a timeout operation for 
-  //                receiving consecutive bytes. Again, we know this will
-  //                be a multiple of the ms to receive bytes
-  // saturation_multi: I think we need a ms value here, and 16 bits seems
-  //                   enough (65535 -> 65 seconds)
-  //                   to trigger desaturation (toggle receiver)
-  uint8_t   timeout_multi;      //  1: If we haven't received a consecutive byte, timeout
-  uint16_t  saturation_us;      //  2: Rx seems to saturate, watch for 0 byte activity.
-} ir_rx_params_t;
+  uint16_t bearing_update_us; // 2: how often to update bearing
+  float    bearing_alpha;     // 4: filter co-efficient for bearing/vectors
+  uint8_t  preamble_byte;       
+  
+} ir_params_t;
 
 #pragma pack(pop)
 

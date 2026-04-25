@@ -24,8 +24,15 @@ extern Uart port_D12_D13;
 
 enum class DemodState : uint8_t {
   Active,
+  Desaturating,
   Deactive,
 };
+
+enum class TxState : uint8_t {
+  Idle,
+  Sending,
+};
+
 
 struct UartChannel {
   Sercom *  hw; // raw CMSIS peripheral, register access
@@ -34,9 +41,11 @@ struct UartChannel {
   int rx_pin;
   int demod_pin;
   DemodState demod_state;
-  uint32_t demod_desat_ts;
+  uint32_t demod_ms_ts;
+  TxState tx_state;
   volatile uint32_t * frame_errors;
 };
+
 
 
 extern UartChannel channel[4];
