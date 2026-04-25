@@ -13,6 +13,7 @@
 /*
  * General (top-level) config
  */
+#define BAUD                    9600
 #define BROADCAST               false
 #define BIDIRECTIONAL           true
 #define BEARING_UPDATE_US       10000 // 100ms

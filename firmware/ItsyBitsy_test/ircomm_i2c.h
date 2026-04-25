@@ -217,8 +217,8 @@ typedef struct {
 
   uint16_t bearing_update_us; // 2: how often to update bearing
   float    bearing_alpha;     // 4: filter co-efficient for bearing/vectors
-  uint8_t  preamble_byte;       
-  
+  uint8_t  preamble_byte;     // 1
+  uint16_t baud;              // 2
 } ir_params_t;
 
 #pragma pack(pop)

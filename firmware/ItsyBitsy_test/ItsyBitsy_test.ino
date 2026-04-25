@@ -1,3 +1,22 @@
+/* To do:
+    - implement the tx process.  We've tested tx working.
+     - check config for whether it is broadcast or not.
+      - if yes, use channel[0].
+      - if not, for loop -> config.tx[]
+     - implementing timing/scheduling of tx
+      - check config for whether this is
+        - randomised (dysnc)
+        - predicted or fixed
+        - set to 0! (off)
+     - implement a check on the saturation to decide
+       if saturation is wanted by the user.
+    - check through other config params for requirements.
+    - implement i2c receive/request calls.
+      - decide if we're going to mutex
+*/
+
+
+
 #include <Arduino.h>
 #include <wiring_private.h>
 #include <Wire.h>
@@ -15,8 +34,6 @@
 #define LDRA_IN_PIN   PIN_PB09
 #define LDRB_IN_PIN   PIN_PA06
 #define LDRC_IN_PIN   PIN_PA07
-
-#define BAUD 9600
 
 
 // Match up 4 instances of the ir parsrer.
@@ -109,6 +126,7 @@ void sercomInvert(Sercom* hw, bool invertTx, bool invertRx) {
 void configureFromConfigH() {
 
   // Top level, general config
+  config.general.baud                     = BAUD;
   config.general.flags.bits.broadcast     = BROADCAST;
   config.general.flags.bits.bidirectional = BIDIRECTIONAL;
   config.general.bearing_update_us        = BEARING_UPDATE_US;
@@ -141,8 +159,6 @@ void setup() {
   while (!Serial);
   Serial.println("Reset");
 
-
- 
   pinMode( DEMOD1_EN_PIN, OUTPUT);
   pinMode( DEMOD2_EN_PIN, OUTPUT);
   pinMode( DEMOD3_EN_PIN, OUTPUT);
@@ -155,6 +171,14 @@ void setup() {
   digitalWrite( DEMOD3_EN_PIN, HIGH);
   digitalWrite( DEMOD4_EN_PIN, HIGH);
 
+  // 58 kHz output on D4
+  setup58kHz();
+
+  // Clear config and set
+  memset( (void*)&config, 0, sizeof( config ));
+  configureFromConfigH();
+
+  // TODO: update baud from config
   pinPeripheral(0, PIO_SERCOM);
   pinPeripheral(1,  PIO_SERCOM);
   port_D1_D0.begin(BAUD);
@@ -171,12 +195,7 @@ void setup() {
 
   beginSerialA4A1_manual(BAUD);
 
-  // 58 kHz output on D4
-  setup58kHz();
-
-  // Clear config and set
-  memset( (void*)&config, 0, sizeof( config ));
-  configureFromConfigH();
+  
 
   // Clear and Setup initial metrics
   memset( (void*)&metrics, 0, sizeof( metrics));
@@ -479,10 +498,10 @@ void loop() {
 
   // TODO: schedule in a transmit, if a message has been setup.
   // We need to write a non-block transmit operation
-//  if ( millis() - test_tx > 1000 ) {
-//    test_tx = millis();
-//    triggerTx(0);
-//  }
+  //  if ( millis() - test_tx > 1000 ) {
+  //    test_tx = millis();
+  //    triggerTx(0);
+  //  }
 
 }
 
