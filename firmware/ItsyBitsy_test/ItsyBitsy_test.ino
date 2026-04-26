@@ -512,19 +512,30 @@ void handleBearingEstimation() {
   }
 }
 
+// In broadcast mode, only settings for 
+// channel[0] are used and applied to all
 void handleTxBroadcast() {
-  // In broadcast mode, only settings for 
-    // channel[0] are used and applied to all
+
+    
+    
+    // If the base_ms interval is 0, we assume the
+    // user does not want to send any messages. 
     if( config.tx[0].base_ms == 0 ) return;
+
+    // If the config tx len is 0, it means we don't
+    // have a message ready to send, or that the
+    // user simply doesn't want to send.
+    if( config.tx[0].len == 0 ) return;
 
     // Check if it is time to transmit.
     uint32_t dt_ms;
-    dt_ms = millis() - metrics.msg_timings.ts_ms[0]; 
+    dt_ms = millis() - metrics.tx_timings.last_ts_ms[0]; 
 
     if( dt_ms > config.tx[0].interval_ms ) {
 
-      
-      // start the send process
+      // start the send process, this will also
+      // set things up to obstruct another call to this
+      // function.
       triggerTx(0);
 
       // Update the timing interval_ms for
