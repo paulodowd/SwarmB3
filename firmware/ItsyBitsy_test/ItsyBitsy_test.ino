@@ -196,7 +196,7 @@ void setup() {
   beginSerialA4A1_manual(BAUD);
 
   
-
+  // TODO: make function, going to call this often
   // Clear and Setup initial metrics
   memset( (void*)&metrics, 0, sizeof( metrics));
   setAllByteTimestamps();
@@ -269,9 +269,13 @@ void triggerTx( int which ) {
   disableDemodulator( which, DemodState::Deactive );
 
   // Capture when this happened
-  metrics.tx_timings.last_us_ts[which] = micros();
+  metrics.tx_timings.last_ts_ms[which] = millis();
 
   channel[which].tx_state = TxState::Sending;
+
+  // TODO: build in a config check for whether we are 
+  // using preamble bytes, and how many repeated 
+  // message tranmissions we are making.
 
   channel[which].port->write( (uint8_t*)tx_buf[which], config.tx[which].len );
 
@@ -290,8 +294,8 @@ bool updateTx( int which ) {
     channel[which].tx_state = TxState::Idle;
 
     // Capture duration
-    uint32_t dt = micros() - metrics.tx_timings.last_us_ts[which];
-    metrics.tx_timings.duration_us[which] = (uint16_t)dt;
+    uint32_t dt = millis() - metrics.tx_timings.last_ts_ms[which];
+    metrics.tx_timings.duration_ms[which] = (uint16_t)dt;
 
     // TODO: check config for whether this is happening
     enableDemodulator( which );
@@ -405,14 +409,21 @@ void updateBearing() {
 
 
 static unsigned long test_tx;
-void loop() {
 
+
+void handleMsgParsing() {
   // First, check for new bytes on each of the 4 receivers,
   // logging any metrics/errors and handling a complete message.
   for ( int i = 0; i < 4; i++ ) {
 
-    // Skip if the demodulator is deactive.
+    // Skip if the demodulator is deactive because of Tx or 
+    // desaturation occuring
     if ( channel[i].demod_state == DemodState::Deactive ) continue;
+
+    // Skip if the user has set to deactive in the config
+    // TODO: once i2c is implemented, I think this will be 
+    // redundant. (?) 
+    if( config.rx[i].flags.bits.enabled == false ) continue;
 
     parser_status_t parser_status = parser[i].getNextByte();
 
@@ -463,7 +474,9 @@ void loop() {
 
     }
   }
+}
 
+void handleDemodulatorSaturation() {
   // Checking for demodulator saturation, calling desaturation
   // Only valid if the demodulator is active in the first place.
   // Demodulator could be disabled by an on-going transmit
@@ -488,21 +501,87 @@ void loop() {
       }
     }
   }
+}
 
+void handleBearingEstimation() {
+  
   // At a much slower rate, update the bearing estimate.
   if ( calcBearingDeltaTime() > config.general.bearing_update_us ) {
     setBearingTimestamp();
     updateBearing();
   }
+}
 
+void handleTxBroadcast() {
+  // In broadcast mode, only settings for 
+    // channel[0] are used and applied to all
+    if( config.tx[0].base_ms == 0 ) return;
 
-  // TODO: schedule in a transmit, if a message has been setup.
-  // We need to write a non-block transmit operation
-  //  if ( millis() - test_tx > 1000 ) {
-  //    test_tx = millis();
-  //    triggerTx(0);
-  //  }
+    // Check if it is time to transmit.
+    uint32_t dt_ms;
+    dt_ms = millis() - metrics.msg_timings.ts_ms[0]; 
 
+    if( dt_ms > config.tx[0].interval_ms ) {
+
+      
+      // start the send process
+      triggerTx(0);
+
+      // Update the timing interval_ms for
+      // the next transmit operation
+      updateTimingInterval( 0 );
+       
+    }
+}
+
+void updateTimingInterval( int which ) {
+  
+}
+
+void handleTx( int which ) {
+  
+}
+
+void handleTransmit() {
+
+  // First, simply update all channel sending
+  // states, which in most cases means doing 
+  // nothing
+  for( int i = 0; i < 4; i++ ) {
+    updateTx(i);
+  }
+
+  // First, are we in broadcast mode or not?
+  if( config.general.flags.bits.broadcast ) {
+
+    // If we're in the middle of a send, abort
+    // attempting to send anything again
+    if( channel[0].tx_state == TxState::Sending ) return;
+
+    // Else, hand over this operation
+    handleTxBroadcast();
+     
+  } else {
+    
+    for( int i = 0; i < 4; i++ ) {
+
+      // If currently sending, avoid sending
+      // again.
+      if( channel[i].tx_state == TxState::Sending ) continue;
+      
+      // else, hand over this process
+      handleTx(i);
+    }
+  }
+}
+
+void loop() {
+
+  handleMsgParsing();
+  handleDemodulatorSaturation();
+  handleBearingEstimation();
+  handleTransmit();
+  
 }
 
 

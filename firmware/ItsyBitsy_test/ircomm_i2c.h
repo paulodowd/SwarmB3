@@ -83,8 +83,8 @@ typedef struct  {
 } ir_crc_t;
 
 typedef struct {
-  uint32_t last_us_ts[4]; // 4x4 bytes
-  uint16_t duration_us[4]; // 4x2 bytes
+  uint32_t last_ts_ms[4]; // 4x4 bytes
+  uint16_t duration_ms[4]; // 4x2 bytes
 } ir_tx_timings_t;
 
 // Contains a simple count of byte activity
@@ -179,13 +179,13 @@ typedef struct {      // total = 17 bytes
       uint8_t reserved        : 7; // 
     } bits;
   } flags;
-  uint32_t repeat;            // 1: how many repeated IR transmissions?
+  uint32_t repeat;            // 4: how many repeated IR transmissions?
   uint8_t  predict_multi;     // 1: how many multiples of tx_len to use with predict?
   uint8_t  defer_multi;       // 1: how many multiples of ms since rx to cancel a tx?
   uint8_t  preamble_repeat;   // 1: how many repeated preamble bytes before transmission?
   uint32_t interval_ms;       // 4: periodic:  current ms period to send messages
   uint32_t base_ms;           // 4: min tx period allowable
-  uint8_t  len;               // 4: how long is the message to transmit?
+  uint8_t  len;               // 1: how long is the message to transmit?
 } ir_tx_params_t;
 
 
