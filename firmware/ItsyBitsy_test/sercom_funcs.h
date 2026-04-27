@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // extern for linking
-extern Uart port_D1_D0; // alias to Serial1
+extern Uart port_D1_D0;
 extern Uart port_D18_D15;
 extern Uart port_D25_D24;
 extern Uart port_D12_D13;
@@ -47,12 +47,12 @@ struct UartChannel {
 };
 
 
-
 extern UartChannel channel[4];
 
+void dumpSercomCtrla(Sercom* hw);
+void sercomInvert(Sercom* hw, bool invertTx, bool invertRx);
 void setup58kHz();
 void stop58kHzClockAndHoldLow();
-
 void configureSercomInvert(Sercom* hw, bool invertTx, bool invertRx);
 void beginSerialA4A1_manual(uint32_t baud);
 static inline void countFrameError(Sercom *hw, volatile uint32_t &counter);

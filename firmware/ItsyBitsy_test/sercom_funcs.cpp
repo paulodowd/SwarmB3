@@ -47,6 +47,43 @@ Uart port_D25_D24(&sercom1, 24, 25, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 
 
 
+
+void dumpSercomCtrla(Sercom* hw) {
+  Serial.print("CTRLA = 0x");
+  Serial.println(hw->USART.CTRLA.reg, HEX);
+}
+
+void sercomInvert(Sercom* hw, bool invertTx, bool invertRx) {
+  // Disable USART
+  hw->USART.CTRLA.reg &= ~SERCOM_USART_CTRLA_ENABLE;
+  while (hw->USART.SYNCBUSY.reg & SERCOM_USART_SYNCBUSY_ENABLE) {
+  }
+
+  uint32_t ctrla = hw->USART.CTRLA.reg;
+
+  // Clear both inversion bits first
+  ctrla &= ~(SERCOM_USART_CTRLA_TXINV | SERCOM_USART_CTRLA_RXINV);
+
+  // SAM D5x/E5x erratum:
+  // RXINV actually inverts TX
+  // TXINV actually inverts RX
+  if (invertTx) {
+    ctrla |= SERCOM_USART_CTRLA_RXINV;
+  }
+  if (invertRx) {
+    ctrla |= SERCOM_USART_CTRLA_TXINV;
+  }
+
+  hw->USART.CTRLA.reg = ctrla;
+  while (hw->USART.SYNCBUSY.reg & SERCOM_USART_SYNCBUSY_SWRST) {
+  }
+
+  // Re-enable USART
+  hw->USART.CTRLA.reg |= SERCOM_USART_CTRLA_ENABLE;
+  while (hw->USART.SYNCBUSY.reg & SERCOM_USART_SYNCBUSY_ENABLE) {
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 58 kHz clock on D7 using TCC1
 // D7 = PA18 = TCC1/WO[2]

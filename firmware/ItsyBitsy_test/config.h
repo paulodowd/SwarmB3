@@ -24,9 +24,9 @@
 /*
  * Config assigned to each receiver
  */
-#define RX_OVERRUN              true  // allow for rx message to complete? 
-#define RX_ENABLED              true
-#define RX_TIMEOUT_MULTI        4
+#define RX_OVERRUN              false  // allow for rx message to complete? 
+#define RX_ENABLED              1
+#define RX_TIMEOUT_MULTI        40
 #define RX_SATURATION_US        8000 // 8ms no bytes
 #define RX_DESATURATION_US      2000 // off for 2ms
 
@@ -34,12 +34,12 @@
  * Config assigned to each transmitter
  */
 #define TX_INTERVAL_MOD         10
-#define TX_REPEAT               1
+#define TX_REPEAT               UINT32_MAX
 #define TX_PREDICT_MULTI        0
 #define TX_DEFER_MULTI          0
 #define TX_PREAMBLE_REPEAT      4
-#define TX_INTERVAL_MS          1000
-#define TX_BASE_MS              1000
+#define TX_INTERVAL_MS          10
+#define TX_BASE_MS              10
 #define TX_LEN                  0
 
 

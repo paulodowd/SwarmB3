@@ -58,6 +58,8 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
     uint8_t b = (uint8_t)port.read();
 
+//    Serial.println((char)b);
+
     // We're either in WAIT_START or WAIT LEN and
     // get the start byte
     if (parser_state != RX_READ_ENC && b == START_BYTE) {
@@ -206,19 +208,19 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
   // timeout error.  We also reset the parser
   // because we need to have consecutive bytes
   // to get a correct message (CRC).
-  if ( parser_state != RX_WAIT_START ) {
-    if ( byte_timeout_ms > 0 ) {
-
-      // TODO: we know the baudrate, I don't think
-      // we need to pass in byte_timeout_ms here.
-      if ( millis() - timeout_ts > byte_timeout_ms ) {
-        reset();
-        status.bytes = REPORT_ZERO_BYTES;
-        status.error = ERR_BYTE_TIMEOUT;
-        return status;
-      }
-    }
-  }
+//  if ( parser_state != RX_WAIT_START ) {
+//    if ( byte_timeout_ms > 0 ) {
+//
+//      // TODO: we know the baudrate, I don't think
+//      // we need to pass in byte_timeout_ms here.
+//      if ( millis() - timeout_ts > byte_timeout_ms ) {
+//        reset();
+//        status.bytes = REPORT_ZERO_BYTES;
+//        status.error = ERR_BYTE_TIMEOUT;
+//        return status;
+//      }
+//    }
+//  }
 
   // Nothing happened
   status.bytes = REPORT_ZERO_BYTES;
