@@ -51,7 +51,7 @@ class IRParser_c {
 
     void begin();
     void reset();
-    parser_status_t getNextByte( );
+    parser_status_t getNextByte( uint32_t byte_timeout_ms );
     void copyMsg( uint8_t * dest );
 
     char CRC8(uint8_t * bytes, uint8_t len);
@@ -59,6 +59,8 @@ class IRParser_c {
     void splitCRC16( uint8_t * u_byte, uint8_t * l_byte, uint16_t crc );
     uint16_t mergeCRC16( uint8_t u_byte, uint8_t l_byte );
 
+    bool isDecoding();
+  
     // This function will take an input string/bytes
     // and prefix it with the start token, length
     // and suffix it with the 16 bit CRC.

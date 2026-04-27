@@ -18,7 +18,7 @@
 #define BIDIRECTIONAL           true
 #define BEARING_UPDATE_US       10000 // 100ms
 #define BEARING_ALPHA           0.25  // 
-#define TX_PREAMBLE_BYTE        0x55 // 0b01010101
+#define TX_PREAMBLE_BYTE        0x55 // 0b01010101, 'U'
 
 
 /*
@@ -33,9 +33,9 @@
 /*
  * Config assigned to each transmitter
  */
-#define TX_DESYNC               true
-#define TX_REPEAT               3
-#define TX_PREDICT_MULTI        8
+#define TX_INTERVAL_MOD         10
+#define TX_REPEAT               1
+#define TX_PREDICT_MULTI        0
 #define TX_DEFER_MULTI          0
 #define TX_PREAMBLE_REPEAT      4
 #define TX_INTERVAL_MS          1000

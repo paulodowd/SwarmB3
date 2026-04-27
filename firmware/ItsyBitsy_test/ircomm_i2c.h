@@ -23,6 +23,9 @@
 
 #define IRCOMM_I2C_ADDR  0x11
 
+void i2c_receive(int len);
+void i2c_request();
+
 
 // This 1 byte struct is used to change the i2c
 // operation.  For example, to reset counts on
@@ -172,19 +175,13 @@ typedef struct {
 // Struct to contain the configuration
 // for transmission.
 typedef struct {      // total = 17 bytes
-  union {                     // 1 byte
-    uint8_t all_flags;        // to access all flags at once
-    struct {
-      uint8_t desync          : 1; // randomise period?
-      uint8_t reserved        : 7; // 
-    } bits;
-  } flags;
   uint32_t repeat;            // 4: how many repeated IR transmissions?
   uint8_t  predict_multi;     // 1: how many multiples of tx_len to use with predict?
   uint8_t  defer_multi;       // 1: how many multiples of ms since rx to cancel a tx?
   uint8_t  preamble_repeat;   // 1: how many repeated preamble bytes before transmission?
   uint32_t interval_ms;       // 4: periodic:  current ms period to send messages
   uint32_t base_ms;           // 4: min tx period allowable
+  uint8_t  interval_mod;
   uint8_t  len;               // 1: how long is the message to transmit?
 } ir_tx_params_t;
 

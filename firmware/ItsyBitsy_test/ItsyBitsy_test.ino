@@ -1,16 +1,4 @@
 /* To do:
-    - implement the tx process.  We've tested tx working.
-     - check config for whether it is broadcast or not.
-      - if yes, use channel[0].
-      - if not, for loop -> config.tx[]
-     - implementing timing/scheduling of tx
-      - check config for whether this is
-        - randomised (dysnc)
-        - predicted or fixed
-        - set to 0! (off)
-     - implement a check on the saturation to decide
-       if saturation is wanted by the user.
-    - check through other config params for requirements.
     - implement i2c receive/request calls.
       - decide if we're going to mutex
 */
@@ -136,7 +124,7 @@ void configureFromConfigH() {
 
   // Config per receiver/uart
   for ( int i = 0; i < 4; i++ ) {
-    config.tx[i].flags.bits.desync  = TX_DESYNC;
+    config.tx[i].interval_mod       = TX_INTERVAL_MOD;
     config.tx[i].repeat             = TX_REPEAT;
     config.tx[i].predict_multi      = TX_PREDICT_MULTI;
     config.tx[i].defer_multi        = TX_DEFER_MULTI;
@@ -165,19 +153,17 @@ void setup() {
   pinMode( DEMOD3_EN_PIN, OUTPUT);
   pinMode( DEMOD4_EN_PIN, OUTPUT);
 
-  // TODO: set after loading in config
-  // Start with all receivers active
-  digitalWrite( DEMOD1_EN_PIN, HIGH);
-  digitalWrite( DEMOD2_EN_PIN, HIGH);
-  digitalWrite( DEMOD3_EN_PIN, HIGH);
-  digitalWrite( DEMOD4_EN_PIN, HIGH);
-
   // 58 kHz output on D4
   setup58kHz();
 
   // Clear config and set
   memset( (void*)&config, 0, sizeof( config ));
+  
   configureFromConfigH();
+
+  for( int i = 0; i < 4; i++ ) {
+    digitalWrite( channel[i].demod_pin, config.rx[i].flags.bits.enabled );
+  }
 
   // TODO: update baud from config
   pinPeripheral(0, PIO_SERCOM);
@@ -205,12 +191,12 @@ void setup() {
   setBearingTimestamp();
 
 
-  // Debugging
+  // Debugging - setup test message for all channels
   for ( int i = 0; i < 4; i++ ) {
     char msg[32];
     memset( (void*)msg, 0, sizeof( msg ));
     memset( (void*)tx_buf[i], 0, sizeof( tx_buf[i] ));
-    sprintf((char*)msg, "paul test %d", i );
+    sprintf((char*)msg, "paul test %d, %lu", i, micros() );
     config.tx[i].len = parser[i].formatIRMessage( (uint8_t*)tx_buf[i], (uint8_t*)msg, strlen(msg));
   }
 
@@ -267,7 +253,9 @@ void triggerTx( int which ) {
   if ( which < 0 || which > 3 ) return;
 
   // TODO: add check to config for whether this happens
-  disableDemodulator( which, DemodState::Deactive );
+  if ( !config.general.flags.bits.bidirectional ) {
+    disableDemodulator( which, DemodState::Deactive );
+  }
 
   // Capture when this happened
   metrics.tx_timings.last_ts_ms[which] = millis();
@@ -278,31 +266,65 @@ void triggerTx( int which ) {
   // into the arduino serial buffer.  For this device
   // (ItsyBitsy M4) I've verified that 349 byte are
   // available, and tx[].repeat is a uint8_t (max 255).
-  // We can only call this function when the Serial was
+  // We can only call triggerTx() when the Serial was
   // previously completed (buffer empty).
   for ( int i = 0; i < config.tx[which].preamble_repeat; i++ ) {
     channel[which].port->write( (uint8_t)config.general.preamble_byte );
   }
 
   // Setup our required number of repeats transmissions.
-  // Here, I think it is not safe to dynamically setup a
-  // byte array, so we're going to load into the Serial
-  // buffer iteratively in a non-blocking way
+  // It is possible for the user to specify UINT32_MAX
+  // number of repeats, which we can't hold in a byte array.
+  // So instead we have to iteratively reload the Serial
+  // buffer.  We also don't want to get held up filling
+  // the buffer with Serial.write(), which will block until
+  // the data is loaded into the buffer.
   tx_repeat_count[which] = config.tx[which].repeat;
 
-  // Next: check if there is still space to add in the
-  // current message stored in tx_buf via config.tx[].len
-  int bytes = channel[which].port->availableForWrite();
-  while ( bytes > config.tx[which].len && tx_repeat_count[which] > 0 ) {
-    channel[which].port->write( (uint8_t*)tx_buf[which], config.tx[which].len);
-    bytes -= config.tx[which].len;
-    tx_repeat_count[which]--;
-  }
+  attemptMsgWriteToSerialBuffer( which );
 
   // We may still have repeated transmissions to make
   // but these will be handled by the non-blocking
   // updateTx function.
 
+}
+
+
+// If this function is called with tx_repeat_count[]
+// as zero, it will do nothing.  Later, updateTx will
+// catch the circumstance and revert the channel
+// TxState to Idle *after* any preamble bytes are
+// sent.  This means that the user could configure
+// the board to only send preamble bytes, and no
+// messages. This could be useful to simply configure
+// a board to generate interference or bytes.
+bool attemptMsgWriteToSerialBuffer( int which ) {
+  if ( which < 0 || which > 3 ) return false;
+
+  bool action;
+
+  // Assume no action
+  action = false;
+
+  // Next: check if there is still space to add in the
+  // current message stored in tx_buf via config.tx[].len
+  int bytes = channel[which].port->availableForWrite();
+  while ( bytes > config.tx[which].len && tx_repeat_count[which] > 0 ) {
+
+    // We have enough space, load in the message.
+    channel[which].port->write( (uint8_t*)tx_buf[which], config.tx[which].len);
+
+    // Ask the channel for remaining bytes. I think
+    // bytes -= len is not necessarily safe.
+    bytes = channel[which].port->availableForWrite();
+
+    // Register this repeat
+    tx_repeat_count[which]--;
+
+    action = true;
+  }
+
+  return action;
 }
 
 bool updateTx( int which ) {
@@ -316,24 +338,15 @@ bool updateTx( int which ) {
   // didn't fit into the Serial buffer before
   if ( tx_repeat_count[which] > 0 ) {
 
-    // Grab how much buffer is free.
-    int bytes = channel[which].port->availableForWrite();
-    
-    // Check we have enough space, attempt to load in the
-    // message
-    while ( bytes > config.tx[which].len && tx_repeat_count[which] > 0 ) {
-      channel[which].port->write( (uint8_t*)tx_buf[which], config.tx[which].len);
-      bytes -= config.tx[which].len;
-      tx_repeat_count[which]--;
-    }
+    attemptMsgWriteToSerialBuffer( which );
 
-    // If we loaded in more bytes, then tx is still 
+    // If we loaded in more bytes, then tx is still
     // not complete.
     return false;
   }
 
 
-  // If here, we're not attempting to load in more 
+  // If here, we're not attempting to load in more
   // message.  We check if tx is finished.
   if ( isUartTxComplete(channel[which].hw ) ) {
 
@@ -344,13 +357,14 @@ bool updateTx( int which ) {
     uint32_t dt = millis() - metrics.tx_timings.last_ts_ms[which];
     metrics.tx_timings.duration_ms[which] = (uint16_t)dt;
 
-    // TODO: check config for whether this is happening
-    enableDemodulator( which );
+    if ( !config.general.flags.bits.bidirectional ) {
+      enableDemodulator( which );
+    }
 
     return true;
   }
 
-  
+
   return false;
 }
 
@@ -386,6 +400,11 @@ void enableDemodulator( int which ) {
 
 bool triggerDemodDesaturation(int which) {
   if ( which < 0 || which > 3 ) return false;
+
+  // If saturation time value is 0, disable desat
+  if ( config.rx[which].saturation_us == 0 ) return false;
+
+  if ( config.rx[which].desaturation_us == 0 ) return false;
 
   // Avoid triggering if the rx demodulator is
   // already deactive (either from a desautration
@@ -473,14 +492,21 @@ void handleMsgParsing() {
     // redundant. (?)
     if ( config.rx[i].flags.bits.enabled == false ) continue;
 
-    parser_status_t parser_status = parser[i].getNextByte();
 
-    // If we got a byte, move the timestamp forwards to stop
-    // triggering a desaturation
-    if ( parser_status.bytes > 0 ) setByteTimestamp( i );
+    // timeout_multi is 0:255, and we generally get bytes 
+    // every 1ms.
+    uint32_t byte_timeout_ms = config.rx[i].timeout_multi;
+    parser_status_t parser_status = parser[i].getNextByte( byte_timeout_ms );
+
+
 
     // Log any activity
     if ( parser_status.bytes > 0 ) {
+
+      // If we got a byte, move the timestamp forwards to stop
+      // triggering a desaturation.  Also used if tx is set to
+      // defer (to activity on receiver)
+      setByteTimestamp( i );
 
       // Continuous log of activity
       metrics.activity.rx[i]++;
@@ -560,46 +586,128 @@ void handleBearingEstimation() {
   }
 }
 
-// In broadcast mode, only settings for
-// channel[0] are used and applied to all
 void handleTxBroadcast() {
 
-
-
-  // If the base_ms interval is 0, we assume the
-  // user does not want to send any messages.
   if ( config.tx[0].base_ms == 0 ) return;
 
-  // If the config tx len is 0, it means we don't
-  // have a message ready to send, or that the
-  // user simply doesn't want to send.
   if ( config.tx[0].len == 0 ) return;
+
+  // If defer_multi is set, then any activity on
+  // a receiver within the threshold will cancel
+  // the send process.
+  for ( int i = 0; i < 4; i++ ) {
+    if ( recentByteActivity(i) ) return;
+
+    // Abort a transmit if any receiver is 
+    // configured to overrun and is currently
+    // receiving a message
+    if ( config.rx[i].flags.bits.overrun ) {
+      if ( parser[i].isDecoding() ) return;
+    }
+  }
 
   // Check if it is time to transmit.
   uint32_t dt_ms;
   dt_ms = millis() - metrics.tx_timings.last_ts_ms[0];
 
+  // Time to send?
   if ( dt_ms > config.tx[0].interval_ms ) {
 
-    // start the send process, this will also
-    // set things up to obstruct another call to this
-    // function.
-    triggerTx(0);
+    // ensure that all channels are duplicates of 0
+    // TODO: a bit expensive?
+    for ( int i = 1; i < 3; i++ ) {
+      memcpy( &config.tx[i], &config.tx[0], sizeof( config.tx[0] ));
+      memcpy( (void*)tx_buf[i], (void*)tx_buf[0], sizeof( tx_buf[0] ));
+    }
 
-    // Update the timing interval_ms for
-    // the next transmit operation
-    updateTimingInterval( 0 );
+    // configure next interval from channel 0
+    uint32_t new_interval = getNewTxInterval(0);
 
+    // Start messaging across all channels
+    for ( int i = 0; i < 4; i++ ) {
+
+      // start the send process, this will also
+      // set things up to obstruct another call to this
+      // function.
+      triggerTx(i);
+
+      config.tx[i].interval_ms = new_interval;
+    }
   }
 }
 
-void updateTimingInterval( int which ) {
+bool recentByteActivity( int which ) {
+  if ( which < 0 || which > 3 ) return false;
 
+  uint32_t dt = calcByteDeltaTime( which );
+
+  // scale for microseconds
+  uint32_t threshold = (uint32_t)config.tx[which].defer_multi;
+  threshold *= 1000;
+  if ( dt < threshold ) return true;
+
+  return false;
 }
 
 void handleTx( int which ) {
 
+  if ( which < 0 || which > 3 ) return;
+
+  if ( config.tx[which].base_ms == 0 ) return;
+
+  if ( config.tx[which].len == 0 ) return;
+
+  if ( recentByteActivity(which) ) return;
+
+  if ( config.rx[which].flags.bits.overrun ) {
+    if ( parser[which].isDecoding() ) return;
+  }
+
+  // Check if it is time to transmit.
+  uint32_t dt_ms;
+  dt_ms = millis() - metrics.tx_timings.last_ts_ms[which];
+
+  if ( dt_ms > config.tx[which].interval_ms ) {
+
+    // start the send process, this will also
+    // set things up to obstruct another call to this
+    // function.
+    triggerTx(which);
+
+    // Update the timing interval_ms for
+    // the next transmit operation
+    config.tx[which].interval_ms = getNewTxInterval( which );
+  }
 }
+
+// Returns an new timing interval from a config specified
+// by which.
+uint32_t getNewTxInterval( int which ) {
+
+  if ( which < 0 || which > 3 ) return 0;
+
+
+  // Assume we use the base value from config
+  uint32_t interval_ms = config.tx[which].base_ms;
+
+  // Conveniently, at 9600 baud, 1 byte is very nearly
+  // 1ms.
+  if ( config.tx[which].predict_multi > 0 ) {
+    interval_ms = config.tx[which].len * config.tx[which].predict_multi;
+  }
+
+  if ( config.tx[which].interval_mod > 0 ) {
+    float percent_mod = (float)config.tx[which].interval_mod;
+    percent_mod /= 100.0;
+    percent_mod *= (float)interval_ms;
+    percent_mod = (float)random( -percent_mod, percent_mod);
+    interval_ms += percent_mod;
+  }
+
+  return interval_ms;
+}
+
+
 
 void handleTransmit() {
 
@@ -611,11 +719,16 @@ void handleTransmit() {
   }
 
   // First, are we in broadcast mode or not?
+  // The only difference is to ensure that the
+  // timing information for broadcast the timing
+  // information across channels is shared.
   if ( config.general.flags.bits.broadcast ) {
 
-    // If we're in the middle of a send, abort
-    // attempting to send anything again
-    if ( channel[0].tx_state == TxState::Sending ) return;
+    // If we're in the middle of a send on any
+    // channel, abort
+    for ( int i = 0; i < 4; i++ ) {
+      if ( channel[i].tx_state == TxState::Sending ) return;
+    }
 
     // Else, hand over this operation
     handleTxBroadcast();
@@ -625,7 +738,6 @@ void handleTransmit() {
     for ( int i = 0; i < 4; i++ ) {
 
       // If currently sending, avoid sending
-      // again.
       if ( channel[i].tx_state == TxState::Sending ) continue;
 
       // else, hand over this process
@@ -640,17 +752,5 @@ void loop() {
   handleDemodulatorSaturation();
   handleBearingEstimation();
   handleTransmit();
-
-}
-
-
-
-
-
-void i2c_receive( int len ) {
-
-}
-
-void i2c_request() {
 
 }

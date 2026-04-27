@@ -32,7 +32,15 @@ void IRParser_c:: copyMsg( uint8_t * dest ) {
 
 }
 
-parser_status_t IRParser_c::getNextByte(  ) {
+bool IRParser_c::isDecoding() {
+
+  // If we're not waiting to start, we're receiving a
+  // message.
+  if ( parser_state != RX_WAIT_START ) return true;
+  return false;
+}
+
+parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
   // Assume no bytes received, no error
   parser_status_t status;
@@ -186,7 +194,7 @@ parser_status_t IRParser_c::getNextByte(  ) {
       return status;
 
     } // if parser_state == RX_READ_ENC
-    
+
     status.bytes = REPORT_ONE_BYTES;
     status.error = NO_ERROR;
     return status;
@@ -198,17 +206,19 @@ parser_status_t IRParser_c::getNextByte(  ) {
   // timeout error.  We also reset the parser
   // because we need to have consecutive bytes
   // to get a correct message (CRC).
-  //  if ( parser_state != RX_WAIT_START ) {
-  //    if ( byte_timeout_ms > 0 ) {
-  //
-  //      // TODO: we know the baudrate, I don't think
-  //      // we need to pass in byte_timeout_ms here.
-  //      if ( millis() - timeout_ts > byte_timeout_ms ) {
-  //        reset();
-  //        return -ERR_BYTE_TIMEOUT;
-  //      }
-  //    }
-  //  }
+  if ( parser_state != RX_WAIT_START ) {
+    if ( byte_timeout_ms > 0 ) {
+
+      // TODO: we know the baudrate, I don't think
+      // we need to pass in byte_timeout_ms here.
+      if ( millis() - timeout_ts > byte_timeout_ms ) {
+        reset();
+        status.bytes = REPORT_ZERO_BYTES;
+        status.error = ERR_BYTE_TIMEOUT;
+        return status;
+      }
+    }
+  }
 
   // Nothing happened
   status.bytes = REPORT_ZERO_BYTES;
