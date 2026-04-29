@@ -18,207 +18,33 @@
 
 #include <Arduino.h>
 #include <stdint.h>
+#include <Wire.h>
+#include "ircomm_i2c_datatypes.h"
+#include "config.h"
 
-#pragma pack(push, 1) 
+extern volatile ir_metrics_t metrics;
+extern volatile ir_config_t  config;
 
-#define IRCOMM_I2C_ADDR  0x11
+extern volatile bool i2c_flag_reset_metrics;
+extern volatile bool i2c_flag_full_reset;
+extern volatile bool i2c_flag_set_tx_0;
+extern volatile bool i2c_flag_set_tx_1;
+extern volatile bool i2c_flag_set_tx_2;
+extern volatile bool i2c_flag_set_tx_3;
+extern volatile bool i2c_flag_set_tx_all;
+extern volatile uint8_t i2c_buf[4][MAX_MSG];
+extern volatile uint8_t i2c_tx_len[4];
 
+void i2cSetMsgStatusBit( int which );
+void i2cClearRxActivityBits();
+void i2cClearStatusBits();
+void i2cClearMsgStatusBit( int which );
+void i2cSetRxActivityBit( int which );
+void i2cClearRxActivityBit( int which );
+void i2cInitState();
 void i2c_receive(int len);
 void i2c_request();
 
-
-// This 1 byte struct is used to change the i2c
-// operation.  For example, to reset counts on
-// the board, or to transfer a message to or from
-// the board, etc.
-typedef struct ir_mode {
-  uint8_t mode;
-} ir_mode_t;
-
-// These flags are used to request specific data
-// from this board, or cause specific functions.
-// ir_mode.mode should be set with one of these
-// flags.
-#define MODE_NOT_SET            0
-#define MODE_REPORT_CRC         1
-#define MODE_REPORT_ACTIVITY    2
-#define MODE_REPORT_SATURATION  3
-#define MODE_REPORT_SKIPS       4
-#define MODE_STOP_TX            5
-#define MODE_SIZE_MSG0          6
-#define MODE_SIZE_MSG1          7
-#define MODE_SIZE_MSG2          8
-#define MODE_SIZE_MSG3          9
-#define MODE_REPORT_MSG0        10
-#define MODE_REPORT_MSG1        11
-#define MODE_REPORT_MSG2        12
-#define MODE_REPORT_MSG3        13
-#define MODE_CLEAR_MSG0         14
-#define MODE_CLEAR_MSG1         15
-#define MODE_CLEAR_MSG2         16
-#define MODE_CLEAR_MSG3         17
-#define MODE_REPORT_SENSORS     18
-#define MODE_RESET_METRICS      19
-#define MODE_REPORT_RX_VECTORS  20
-#define MODE_REPORT_RX_BEARING  21
-#define MODE_REPORT_MSG_TIMINGS 22
-#define MODE_REPORT_BYTE_TIMINGS 23
-#define MODE_REPORT_HIST        24
-#define MODE_REPORT_FRAME_ERRS  25
-#define MODE_CLEAR_HIST         26
-#define MODE_FULL_RESET         27
-#define MODE_REPORT_CYCLES      28
-#define MODE_REPORT_ERRORS      29
-#define MODE_STOP_RX            30
-#define MODE_START_RX           31
-#define MODE_SET_RX             32
-#define MODE_SET_TX             33
-#define MODE_GET_RX             34
-#define MODE_GET_TX             35
-#define MODE_SET_MSG            36
-#define MAX_MODE                37
-
-// Contains pass/fail count for the
-// crc decoded at the end of each message.
-typedef struct  {
-  uint32_t fail[4];   // 4 * 4 = 16bytes
-  uint32_t pass[4];   // 4 * 4 = 16bytes
-} ir_crc_t;
-
-typedef struct {
-  uint32_t last_ts_ms[4]; // 4x4 bytes
-  uint16_t duration_ms[4]; // 4x2 bytes
-} ir_tx_timings_t;
-
-// Contains a simple count of byte activity
-// per receiver.  Used to estimate bearing
-// elsewhere.
-typedef struct {    
-  uint32_t rx[4];
-} ir_activity_t;
-
-// Used to periodically create component
-// vectors for a bearing estimation, 
-// drawn from the activity struct.
-typedef struct {
-  float rx[4];         // 4x4 = 16bytes
-} ir_vectors_t;
-
-// Contains the latest bearing estimation
-// components.
-// Theta: angle estimate.
-// Mag: resultant magnitude. If 1, theta
-//      is very confident. If 0, counts for
-//      each receiver have cancelled out.
-// Sum: Pre-normalised sum of rx counts used.
-typedef struct  {
-  uint32_t us_ts;     // 4 bytes
-  float theta;                // 4
-  float mag;                  // 4
-  float sum;                  // 4
-} ir_bearing_t;
-
-// Used to store a count of frame errors at
-// the UART hardware level.
-typedef struct  {
-  uint32_t rx[4];       // 4x4 = 16 bytes
-} ir_frame_errors_t;
-
-// Used to count how often the receivers 
-// are power cycled due to prolonged period
-// of inactivity.
-typedef struct  {
-  uint32_t rx[4];
-} ir_saturation_t;
-
-
-// Counts for each type of error
-// per receiver.
-// [ rx ][ error ]
-typedef struct  {  // 32 bytes
-  uint16_t type[4][4];// 4*4 = 16*2bytes
-} ir_errors_t;
-
-
-// To find out if a message is ready
-// to collect.
-// 0: no message.
-// <33: message length. 
-typedef struct {  // 1 byte
-  uint8_t n_bytes;
-} ir_msg_status_t;
-
-// To find out the relative timing of
-// message activity
-typedef struct { // 32 bytes
-  uint32_t dt_ms[4];           // 16 bytes
-  uint32_t ts_ms[4];            // 16 bytes
-} ir_msg_timings_t;
-
-// To find out the relative timing of
-// byte activity (not full messages 
-// correctly received)
-typedef struct { // 32 bytes
-  uint32_t dt_us[4];           // 16 bytes
-  uint32_t ts_us[4];            // 16 bytes
-} ir_byte_timings_t;
-
-// Used to report back readings from the
-// extra sensors that can be mounted on
-// the communication board
-typedef struct {
-  int16_t ldr[3];     // 6 bytes
-  int16_t prox[2];    // 4 bytes
-} ir_sensors_t;
-
-
-// Struct to contain the configuration
-// for transmission.
-typedef struct {      // total = 17 bytes
-  uint32_t repeat;            // 4: how many repeated IR transmissions?
-  uint8_t  predict_multi;     // 1: how many multiples of tx_len to use with predict?
-  uint8_t  defer_multi;       // 1: how many multiples of ms since rx to cancel a tx?
-  uint8_t  preamble_repeat;   // 1: how many repeated preamble bytes before transmission?
-  uint32_t interval_ms;       // 4: periodic:  current ms period to send messages
-  uint32_t base_ms;           // 4: min tx period allowable
-  uint8_t  interval_mod;
-  uint8_t  len;               // 1: how long is the message to transmit?
-} ir_tx_params_t;
-
-
-// Struct to contain the configuration
-// for reception.
-typedef struct {       // total = 8 bytes.
-  union {                           // 1 bytes
-    uint8_t all_flags;             // to access all flags at once
-    struct {
-      uint8_t overrun         : 1; // complete recieve outside period?
-      uint8_t enabled         : 1; // receiver available to use?
-      uint8_t reserved        : 6; // randomise rx cycling
-    } bits;
-  } flags;
-  uint8_t   timeout_multi;      //  1: If we haven't received a consecutive byte, timeout
-  uint16_t  saturation_us;      //  2: Rx seems to saturate, watch for 0 byte activity.
-  uint16_t  desaturation_us;    //  2: How long to desaturation for?
-} ir_rx_params_t;
-
-typedef struct {
-  union {                           // 1 bytes
-    uint8_t all_flags;             // to access all flags at once
-    struct {
-      uint8_t broadcast       : 1; // tx combined, or independent?
-      uint8_t bidirectional   : 1;
-      uint8_t reserved        : 6; // not used
-    } bits;
-  } flags;
-
-  uint16_t bearing_update_us; // 2: how often to update bearing
-  float    bearing_alpha;     // 4: filter co-efficient for bearing/vectors
-  uint8_t  preamble_byte;     // 1
-  uint16_t baud;              // 2
-} ir_params_t;
-
-#pragma pack(pop)
 
 
 #endif

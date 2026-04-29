@@ -15,7 +15,7 @@
  */
 #define BAUD                    9600
 #define BROADCAST               false
-#define BIDIRECTIONAL           true
+#define BIDIRECTIONAL           false 
 #define BEARING_UPDATE_US       10000 // 100ms
 #define BEARING_ALPHA           0.25  // 
 #define TX_PREAMBLE_BYTE        0x55 // 0b01010101, 'U'
@@ -24,9 +24,9 @@
 /*
  * Config assigned to each receiver
  */
-#define RX_OVERRUN              false  // allow for rx message to complete? 
+#define RX_OVERRUN              true  // allow for rx message to complete? 
 #define RX_ENABLED              1
-#define RX_TIMEOUT_MULTI        40
+#define RX_TIMEOUT_MULTI        8
 #define RX_SATURATION_US        8000 // 8ms no bytes
 #define RX_DESATURATION_US      2000 // off for 2ms
 
@@ -34,24 +34,15 @@
  * Config assigned to each transmitter
  */
 #define TX_INTERVAL_MOD         10
-#define TX_REPEAT               UINT32_MAX
+#define TX_REPEAT               1
 #define TX_PREDICT_MULTI        0
 #define TX_DEFER_MULTI          0
 #define TX_PREAMBLE_REPEAT      4
-#define TX_INTERVAL_MS          10
-#define TX_BASE_MS              10
+#define TX_INTERVAL_MS          100
+#define TX_BASE_MS              100
 #define TX_LEN                  0
 
 
-// hard i2c constraints
-// message payload to 32 bytes.  
-#define MAX_MSG 32
-
-// When we encode a message, the worst case
-// is 32 bytes of payload, and each byte is
-// escaped with a byte. We also need to add
-// the start, length and CRC bytes (+4).
-#define MAX_TX_BUF (MAX_MSG * 2) + 4
 
 
 #endif

@@ -3,20 +3,66 @@
 // Match up 4 instances of the ir parsrer.
 //                          right            back         fwd         left
 IRParser_c parser[4] = { port_D12_D13, port_D25_D24, port_D18_D15, port_D1_D0 };
-ircomm_metrics_t metrics;
 float bearing_activity[4];
-ircomm_config_t config;
-
-volatile uint8_t tx_buf[4][MAX_TX_BUF];
 uint32_t tx_repeat_count[4];
 
 
 void resetMetrics() {
-  memset( (void*)&metrics, 0, sizeof( metrics));
+  memset( (ir_metrics_t*)&metrics, 0, sizeof( ir_metrics_t ));
   setAllByteTimestamps();
   setAllMsgTimestamps();
   setBearingTimestamp();
+  i2cClearStatusBits();
 }
+
+// Reading #define from config.h to give the board a default
+// configuration.  All settings can be reconfigured over i2c
+void configureFromConfigH() {
+
+  memset( (ir_config_t*)&config, 0, sizeof( ir_config_t ));
+
+  // Top level, general config
+  config.general.baud                     = BAUD;
+  config.general.flags.bits.broadcast     = BROADCAST;
+  config.general.flags.bits.bidirectional = BIDIRECTIONAL;
+  config.general.bearing_update_us        = BEARING_UPDATE_US;
+  config.general.bearing_alpha            = BEARING_ALPHA;
+  config.general.preamble_byte            = TX_PREAMBLE_BYTE;
+
+  // Config per receiver/uart
+  for ( int i = 0; i < 4; i++ ) {
+    config.tx[i].interval_mod       = TX_INTERVAL_MOD;
+    config.tx[i].repeat             = TX_REPEAT;
+    config.tx[i].predict_multi      = TX_PREDICT_MULTI;
+    config.tx[i].defer_multi        = TX_DEFER_MULTI;
+    config.tx[i].preamble_repeat    = TX_PREAMBLE_REPEAT;
+    config.tx[i].interval_ms        = TX_INTERVAL_MS;
+    config.tx[i].base_ms            = TX_BASE_MS;
+    config.tx[i].len                = TX_LEN;
+
+    config.rx[i].flags.bits.overrun = RX_OVERRUN;
+    config.rx[i].flags.bits.enabled = RX_ENABLED;
+    config.rx[i].timeout_multi      = RX_TIMEOUT_MULTI;
+    config.rx[i].saturation_us      = RX_SATURATION_US;
+    config.rx[i].desaturation_us    = RX_DESATURATION_US;
+  }
+  
+  // Enable demodulators as specified
+  // in config.h
+  for ( int i = 0; i < 4; i++ ) {
+    digitalWrite( channel[i].demod_pin, config.rx[i].flags.bits.enabled == 1 ? HIGH : LOW );
+  }
+
+}
+
+void fullReset() {
+  memset( (ir_config_t*)&config,0,sizeof( ir_config_t ));
+  configureFromConfigH();
+  resetMetrics();
+  i2cInitState();
+}
+
+
 
 void setBearingTimestamp() {
   metrics.bearing.us_ts = micros();
@@ -67,7 +113,8 @@ void triggerTx( int which ) {
   if ( which < 0 || which > 3 ) return;
 
   // TODO: add check to config for whether this happens
-  if ( !config.general.flags.bits.bidirectional ) {
+  if ( config.general.flags.bits.bidirectional == 0 ) {
+//    Serial.println("Deactivate!");
     disableDemodulator( which, DemodState::Deactive );
   }
 
@@ -126,7 +173,7 @@ bool attemptMsgWriteToSerialBuffer( int which ) {
   while ( bytes > config.tx[which].len && tx_repeat_count[which] > 0 ) {
 
     // We have enough space, load in the message.
-    channel[which].port->write( (uint8_t*)tx_buf[which], config.tx[which].len);
+    channel[which].port->write( (uint8_t*)config.tx_buf[which], config.tx[which].len);
 
     // Ask the channel for remaining bytes. I think
     // bytes -= len is not necessarily safe.
@@ -171,7 +218,8 @@ bool updateTx( int which ) {
     uint32_t dt = millis() - metrics.tx_timings.last_ts_ms[which];
     metrics.tx_timings.duration_ms[which] = (uint16_t)dt;
 
-    if ( !config.general.flags.bits.bidirectional ) {
+    if ( config.general.flags.bits.bidirectional == 0 ) {
+//      Serial.println("activate!");
       enableDemodulator( which );
     }
 
@@ -308,8 +356,11 @@ void handleMsgParsing() {
     uint32_t byte_timeout_ms = config.rx[i].timeout_multi;
     parser_status_t parser_status = parser[i].getNextByte( byte_timeout_ms );
 
+
     // Log any activity
     if ( parser_status.bytes > 0 ) {
+
+//      Serial.println(i);
 
       // If we got a byte, move the timestamp forwards to stop
       // triggering a desaturation.  Also used if tx is set to
@@ -319,11 +370,15 @@ void handleMsgParsing() {
       // Continuous log of activity
       metrics.activity.rx[i]++;
 
+      i2cSetRxActivityBit(i);
+
       // Cyclical log, used to estimate bearing
       // to neighbours
       // increment bearing activity
       bearing_activity[i] += 1.0;
 
+    } else {
+      i2cClearRxActivityBit(i);
     }
 
     // Log any errors
@@ -341,22 +396,23 @@ void handleMsgParsing() {
 
 
       // Debug
-//            Serial.print("Port "); Serial.print(i);
-//            Serial.print(" Got message: ");
-//            Serial.println( (char*)parser[i].msg);
+//                  Serial.print("Port "); Serial.print(i);
+//                  Serial.print(" Got message: ");
+//                  Serial.println( (char*)parser[i].msg);
+      config.msg_len[i] = parser[i].msg_len;
+      parser[i].copyMsg( (uint8_t*)config.msg[i] );
+      i2cSetMsgStatusBit( i );
 
       calcMsgDeltaTime(i);
       setMsgTimestamp(i);
 
       metrics.crc.pass[i]++;
 
-      // TODO: transfer message, ready for i2c request
-      // and so it isn't over-written by the parser with
-      // the next full message received
-
     }
   }
 }
+
+
 
 void handleDemodulatorSaturation() {
   // Checking for demodulator saturation, calling desaturation
@@ -383,6 +439,20 @@ void handleDemodulatorSaturation() {
       }
     }
   }
+}
+
+void printStatus() {
+
+  Serial.print("M[0:3], A[4:7]: ");
+
+  for ( int i = 0; i < 8; i++ ) {
+    if ( config.status & (1 << i) ) {
+      Serial.print("1 ");
+    } else {
+      Serial.print("0 ");
+    }
+  }
+  Serial.println();
 }
 
 void handleBearingEstimation() {
@@ -424,8 +494,8 @@ void handleTxBroadcast() {
     // ensure that all channels are duplicates of 0
     // TODO: a bit expensive?
     for ( int i = 1; i < 3; i++ ) {
-      memcpy( &config.tx[i], &config.tx[0], sizeof( config.tx[0] ));
-      memcpy( (void*)tx_buf[i], (void*)tx_buf[0], sizeof( tx_buf[0] ));
+      memcpy( (void*)&config.tx[i], (void*)&config.tx[0], sizeof( config.tx[0] ));
+      memcpy( (void*)config.tx_buf[i], (void*)config.tx_buf[0], sizeof( config.tx_buf[0] ));
     }
 
     // configure next interval from channel 0
@@ -455,6 +525,13 @@ bool recentByteActivity( int which ) {
   if ( dt < threshold ) return true;
 
   return false;
+}
+
+void printDemodStatus() {
+  for( int i = 0; i < 4; i++ ) {
+    Serial.print( channel[i].demod_state == DemodState::Active ? "1" : "0");
+  }
+  Serial.println();
 }
 
 void handleTx( int which ) {
@@ -552,4 +629,56 @@ void handleTransmit() {
       handleTx(i);
     }
   }
+}
+
+void handleI2cFlags() {
+
+  if ( i2c_flag_reset_metrics ) {
+    i2c_flag_reset_metrics = false;
+    resetMetrics();
+  }
+
+  if ( i2c_flag_full_reset ) {
+    i2c_flag_full_reset = false;
+    fullReset();
+  }
+
+
+  if ( i2c_flag_set_tx_0 ) {
+    config.tx[0].len = parser[0].formatIRMessage( (uint8_t*)config.tx_buf[0], (uint8_t*)i2c_buf[0], i2c_tx_len[0] );
+
+    i2c_flag_set_tx_0 = false;
+    i2c_tx_len[0] = 0;
+  }
+
+  if ( i2c_flag_set_tx_1 ) {
+    config.tx[1].len = parser[1].formatIRMessage( (uint8_t*)config.tx_buf[1], (uint8_t*)i2c_buf[1], i2c_tx_len[1] );
+
+    i2c_flag_set_tx_1 = false;
+    i2c_tx_len[1] = 0;
+  }
+
+  if ( i2c_flag_set_tx_2 ) {
+    config.tx[2].len = parser[2].formatIRMessage( (uint8_t*)config.tx_buf[2], (uint8_t*)i2c_buf[2], i2c_tx_len[2] );
+
+    i2c_flag_set_tx_2 = false;
+    i2c_tx_len[2] = 0;
+  }
+
+  if ( i2c_flag_set_tx_3 ) {
+    config.tx[3].len = parser[3].formatIRMessage( (uint8_t*)config.tx_buf[3], (uint8_t*)i2c_buf[3], i2c_tx_len[3] );
+
+    i2c_flag_set_tx_3 = false;
+    i2c_tx_len[3] = 0;
+  }
+
+  if ( i2c_flag_set_tx_all ) {
+    
+    for ( int i = 0; i < 4; i++ ) {
+      config.tx[i].len = parser[i].formatIRMessage( (uint8_t*)config.tx_buf[i], (uint8_t*)i2c_buf[0], i2c_tx_len[0] );  
+    }
+    i2c_flag_set_tx_all = false;
+    i2c_tx_len[0] = 0;
+  }
+
 }

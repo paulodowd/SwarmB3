@@ -24,43 +24,14 @@
 #define LDRC_IN_PIN   PIN_PA07
 
 
-// Reading #define from config.h to give the board a default
-// configuration.  All settings can be reconfigured over i2c
-void configureFromConfigH() {
 
-  // Top level, general config
-  config.general.baud                     = BAUD;
-  config.general.flags.bits.broadcast     = BROADCAST;
-  config.general.flags.bits.bidirectional = BIDIRECTIONAL;
-  config.general.bearing_update_us        = BEARING_UPDATE_US;
-  config.general.bearing_alpha            = BEARING_ALPHA;
-  config.general.preamble_byte            = TX_PREAMBLE_BYTE;
-
-  // Config per receiver/uart
-  for ( int i = 0; i < 4; i++ ) {
-    config.tx[i].interval_mod       = TX_INTERVAL_MOD;
-    config.tx[i].repeat             = TX_REPEAT;
-    config.tx[i].predict_multi      = TX_PREDICT_MULTI;
-    config.tx[i].defer_multi        = TX_DEFER_MULTI;
-    config.tx[i].preamble_repeat    = TX_PREAMBLE_REPEAT;
-    config.tx[i].interval_ms        = TX_INTERVAL_MS;
-    config.tx[i].base_ms            = TX_BASE_MS;
-    config.tx[i].len                = TX_LEN;
-
-    config.rx[i].flags.bits.overrun = RX_OVERRUN;
-    config.rx[i].flags.bits.enabled = RX_ENABLED;
-    config.rx[i].timeout_multi      = RX_TIMEOUT_MULTI;
-    config.rx[i].saturation_us      = RX_SATURATION_US;
-    config.rx[i].desaturation_us    = RX_DESATURATION_US;
-  }
-}
 
 
 void setup() {
 
-  Serial.begin(115200);
+    Serial.begin(115200);
   //  while (!Serial);
-  Serial.println("Reset");
+  //  Serial.println("Reset");
 
   pinMode( DEMOD1_EN_PIN, OUTPUT);
   pinMode( DEMOD2_EN_PIN, OUTPUT);
@@ -70,16 +41,7 @@ void setup() {
   // 58 kHz output on D4
   setup58kHz();
 
-  // Clear config and set
-  memset( (void*)&config, 0, sizeof( config ));
-
-  configureFromConfigH();
-
-  // Enable demodulators as specified
-  // in config.h
-  for ( int i = 0; i < 4; i++ ) {
-    digitalWrite( channel[i].demod_pin, config.rx[i].flags.bits.enabled == 1 ? HIGH : LOW );
-  }
+  fullReset();
 
   // Activate SERCOM units. Note, slightly
   // different config for each.
@@ -102,30 +64,32 @@ void setup() {
   beginSerialA4A1_manual(BAUD);
 
 
-  resetMetrics();
 
-  //  Serial.println("Setup complete");
+  Wire.begin(IRCOMM_I2C_ADDR);
+  Wire.onReceive( i2c_receive );
+  Wire.onRequest( i2c_request );
+
+//  setTestMessage();
+  //    Serial.println("Setup complete");
 }
 
 void setTestMessage() {
   for ( int i = 0; i < 4; i++ ) {
     char msg[32];
-    memset( (void*)msg, 0, sizeof( msg ));
-    memset( (void*)tx_buf[i], 0, sizeof( tx_buf[i] ));
+    memset( (char*)msg, 0, sizeof( msg ));
+    memset( (uint8_t*)config.tx_buf[i], 0, sizeof( config.tx_buf[i] ));
     sprintf((char*)msg, "test %d, %lu", i, micros() );
-    config.tx[i].len = parser[i].formatIRMessage( (uint8_t*)tx_buf[i], (uint8_t*)msg, strlen(msg));
+    config.tx[i].len = parser[i].formatIRMessage( (uint8_t*)config.tx_buf[i], (uint8_t*)msg, strlen(msg));
   }
 
 }
 
-static unsigned long test_tx;
+
 void loop() {
 
-  if ( millis() - test_tx > 100 ) {
+  
 
-    test_tx = millis();
-  }
-
+  handleI2cFlags();
   handleMsgParsing();
   handleDemodulatorSaturation();
   handleBearingEstimation();

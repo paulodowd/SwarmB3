@@ -203,24 +203,24 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
   } // if port.available()
 
-  // If we started to receive a message but we
-  // didn't get any more bytes, indicate the
-  // timeout error.  We also reset the parser
-  // because we need to have consecutive bytes
-  // to get a correct message (CRC).
-//  if ( parser_state != RX_WAIT_START ) {
-//    if ( byte_timeout_ms > 0 ) {
-//
-//      // TODO: we know the baudrate, I don't think
-//      // we need to pass in byte_timeout_ms here.
-//      if ( millis() - timeout_ts > byte_timeout_ms ) {
-//        reset();
-//        status.bytes = REPORT_ZERO_BYTES;
-//        status.error = ERR_BYTE_TIMEOUT;
-//        return status;
-//      }
-//    }
-//  }
+//   If we started to receive a message but we
+//   didn't get any more bytes, indicate the
+//   timeout error.  We also reset the parser
+//   because we need to have consecutive bytes
+//   to get a correct message (CRC).
+  if ( parser_state != RX_WAIT_START ) {
+    if ( byte_timeout_ms > 0 ) {
+
+      // TODO: we know the baudrate, I don't think
+      // we need to pass in byte_timeout_ms here.
+      if ( millis() - timeout_ts > byte_timeout_ms ) {
+        reset();
+        status.bytes = REPORT_ZERO_BYTES;
+        status.error = ERR_BYTE_TIMEOUT;
+        return status;
+      }
+    }
+  }
 
   // Nothing happened
   status.bytes = REPORT_ZERO_BYTES;

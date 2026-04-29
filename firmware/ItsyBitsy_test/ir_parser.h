@@ -4,6 +4,7 @@
 #include <avr/io.h>
 #include "Arduino.h"
 #include "config.h"
+#include "ircomm_i2c_datatypes.h"
 
 #define ERR_RESYNC        0   // getting start byte again
 #define ERR_BAD_LENGTH    1   // len byte error
@@ -34,7 +35,7 @@ typedef struct {
 class IRParser_c {
 
   public:
-
+   
     uint8_t parser_state;                           // Tracks receiving state (RX_...).
     bool    escape_next;                        // Flag to perform XOR to escape next byte
     uint8_t enc_remain;                         // Counts down the number of encoded bytes to read in
