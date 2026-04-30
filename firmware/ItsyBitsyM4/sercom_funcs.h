@@ -31,6 +31,7 @@ enum class DemodState : uint8_t {
 
 enum class TxState : uint8_t {
   Idle,
+  Deferred,
   Sending,
 };
 

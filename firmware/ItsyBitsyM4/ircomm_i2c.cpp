@@ -72,7 +72,7 @@ void i2cUpdateFrameErrors() {
   metrics.frame_errors.rx[1] = getFrameErrorCount(channel[1]);
   metrics.frame_errors.rx[2] = getFrameErrorCount(channel[2]);
   metrics.frame_errors.rx[3] = getFrameErrorCount(channel[3]);
-  
+
 }
 
 
@@ -109,33 +109,6 @@ void i2c_receive( int len ) {
         config.msg_len[3] = 0;
         break;
 
-      // Context changes:
-      //      case  MODE_SET_MSG_ALL:
-      //      case  MODE_SET_MSG_0:
-      //      case  MODE_SET_MSG_1:
-      //      case  MODE_SET_MSG_2:
-      //      case  MODE_SET_MSG_3:
-      //      case  MODE_SET_TX_CONFIG_0:
-      //      case  MODE_SET_TX_CONFIG_1:
-      //      case  MODE_SET_TX_CONFIG_2:
-      //      case  MODE_SET_TX_CONFIG_3:
-      //      case  MODE_SET_RX_CONFIG_0:
-      //      case  MODE_SET_RX_CONFIG_1:
-      //      case  MODE_SET_RX_CONFIG_2:
-      //      case  MODE_SET_RX_CONFIG_3:
-      //      case  MODE_SET_GEN_CONFIG:
-      //      case  MODE_GET_TX_CONFIG_0:
-      //      case  MODE_GET_TX_CONFIG_1:
-      //      case  MODE_GET_TX_CONFIG_2:
-      //      case  MODE_GET_TX_CONFIG_3:
-      //      case  MODE_GET_RX_CONFIG_0:
-      //      case  MODE_GET_RX_CONFIG_1:
-      //      case  MODE_GET_RX_CONFIG_2:
-      //      case  MODE_GET_RX_CONFIG_3:
-      //      case  MODE_GET_GEN_CONFIG:
-      //        last_mode = new_mode;
-      //        break;
-
       case  MODE_FULL_RESET:
         i2c_flag_full_reset = true;
         break;
@@ -157,7 +130,7 @@ void i2c_receive( int len ) {
     // START OF MULTI-BYTE RECEIVES
     // check which context we are receiving in
   } else if ( last_mode == MODE_SET_MSG_0 ) {
-    
+
     Wire.readBytes( (uint8_t*)i2c_buf[0], len );
     i2c_tx_len[0] = len;
     i2c_flag_set_tx_0 = true;
@@ -215,6 +188,7 @@ void i2c_receive( int len ) {
     } else {
       while (Wire.available()) Wire.read();
     }
+    last_mode = MODE_NOT_SET;
 
   } else if ( last_mode == MODE_SET_RX_CONFIG_3 ) {
     if ( len == sizeof( ir_rx_params_t ) ) {
@@ -332,6 +306,10 @@ void i2c_request() {
     case  MODE_REPORT_BYTE_TIMINGS:
       Wire.write( (uint8_t*)&metrics.byte_timings, sizeof( metrics.byte_timings) );
       break;
+    case MODE_REPORT_TX_COUNTS:
+      Wire.write( (uint8_t*)&metrics.tx_counts, sizeof( metrics.tx_counts ) );
+      break;
+
 
     case  MODE_REPORT_CRC:
       Wire.write( (uint8_t*)&metrics.crc, sizeof( metrics.crc) );

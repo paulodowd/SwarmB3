@@ -62,23 +62,24 @@ typedef uint8_t ir_mode_t;
 #define MODE_REPORT_TX_TIMINGS    24
 #define MODE_REPORT_MSG_TIMINGS   25
 #define MODE_REPORT_BYTE_TIMINGS  26
+#define MODE_REPORT_TX_COUNTS     27
 
 // Errors
-#define MODE_REPORT_CRC           27
-#define MODE_REPORT_FRAME_ERRS    28
-#define MODE_REPORT_ERRORS        29
-#define MODE_REPORT_SATURATION    30
+#define MODE_REPORT_CRC           28
+#define MODE_REPORT_FRAME_ERRS    29
+#define MODE_REPORT_ERRORS        30
+#define MODE_REPORT_SATURATION    31
 
 // Config
-#define MODE_SET_RX_CONFIG_0      31
-#define MODE_SET_RX_CONFIG_1      32
-#define MODE_SET_RX_CONFIG_2      33
-#define MODE_SET_RX_CONFIG_3      34
-#define MODE_SET_TX_CONFIG_0      35
-#define MODE_SET_TX_CONFIG_1      36
-#define MODE_SET_TX_CONFIG_2      37
-#define MODE_SET_TX_CONFIG_3      38
-#define MODE_SET_GEN_CONFIG       39
+#define MODE_SET_RX_CONFIG_0      32
+#define MODE_SET_RX_CONFIG_1      33
+#define MODE_SET_RX_CONFIG_2      34
+#define MODE_SET_RX_CONFIG_3      35
+#define MODE_SET_TX_CONFIG_0      36
+#define MODE_SET_TX_CONFIG_1      37
+#define MODE_SET_TX_CONFIG_2      38
+#define MODE_SET_TX_CONFIG_3      39
+#define MODE_SET_GEN_CONFIG       40
 
 #define MODE_GET_RX_CONFIG_0      41
 #define MODE_GET_RX_CONFIG_1      42
@@ -88,11 +89,11 @@ typedef uint8_t ir_mode_t;
 #define MODE_GET_TX_CONFIG_1      46
 #define MODE_GET_TX_CONFIG_2      47
 #define MODE_GET_TX_CONFIG_3      48
-#define MODE_GET_GEN_CONFIG       40
+#define MODE_GET_GEN_CONFIG       49
 
-#define MODE_REPORT_SENSORS       49
+#define MODE_REPORT_SENSORS       50
 
-#define MAX_MODE                  50
+#define MAX_MODE                  51
 
 
 
@@ -169,6 +170,11 @@ typedef struct {
   uint32_t last_ts_ms[4]; // 4x4 bytes
   uint16_t duration_ms[4]; // 4x2 bytes
 } ir_tx_timings_t;
+
+typedef struct {
+  uint32_t sent[4];       // 4x4=16
+  uint32_t deferred[4];   // 4x4=16
+} ir_tx_counts_t;
 
 
 // To find out the relative timing of
@@ -254,6 +260,7 @@ typedef struct {
   ir_bearing_t      bearing;
   ir_sensors_t      sensors;
   ir_tx_timings_t   tx_timings;
+  ir_tx_counts_t    tx_counts;
 } ir_metrics_t;
 
 // On this new board, each rx demodulator and

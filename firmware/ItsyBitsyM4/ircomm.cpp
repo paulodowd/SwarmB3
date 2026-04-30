@@ -194,7 +194,7 @@ bool updateTx( int which ) {
 
 
   // Already complete? Nothing to do.
-  if ( channel[which].tx_state == TxState::Idle ) return true;
+  if ( channel[which].tx_state != TxState::Sending ) return true;
 
   // If we need to progress a repeated transmission that
   // didn't fit into the Serial buffer before
@@ -214,6 +214,10 @@ bool updateTx( int which ) {
 
     // Set tx flag back to idle
     channel[which].tx_state = TxState::Idle;
+
+    // Since we finished a transmission, we log
+    // this instance in the count
+    metrics.tx_counts.sent[which]++;
 
     // Capture duration
     uint32_t dt = millis() - metrics.tx_timings.last_ts_ms[which];
@@ -471,22 +475,7 @@ void handleTxBroadcast() {
 
   if ( config.tx[0].len == 0 ) return;
 
-  // If defer_multi is set, then any activity on
-  // a receiver within the threshold will cancel
-  // the send process.
-  for ( int i = 0; i < 4; i++ ) {
-    if ( recentByteActivity(i) ) {
-      
-      return;
-    }
 
-    // Abort a transmit if any receiver is
-    // configured to overrun and is currently
-    // receiving a message
-    if ( config.rx[i].flags.bits.overrun ) {
-      if ( parser[i].isDecoding() ) return;
-    }
-  }
 
   // Check if it is time to transmit.
   uint32_t dt_ms;
@@ -494,6 +483,45 @@ void handleTxBroadcast() {
 
   // Time to send?
   if ( dt_ms > config.tx[0].interval_ms ) {
+
+    // If defer_multi is set, then any activity on
+    // a receiver within the threshold will cancel
+    // the send process.
+    for ( int i = 0; i < 4; i++ ) {
+      if ( recentByteActivity(i) ) {
+
+        // Use tx state to count only the first
+        // occuring instance of deferring
+        if ( channel[0].tx_state == TxState::Idle ) {
+          metrics.tx_counts.deferred[0]++;
+          metrics.tx_counts.deferred[1]++;
+          metrics.tx_counts.deferred[2]++;
+          metrics.tx_counts.deferred[3]++;
+          channel[0].tx_state = TxState::Deferred;
+        }
+
+        return;
+      }
+
+      // Abort a transmit if any receiver is
+      // configured to overrun and is currently
+      // receiving a message
+      if ( config.rx[i].flags.bits.overrun ) {
+        if ( parser[i].isDecoding() ) {
+          // Use tx state to count only the first
+          // occuring instance of deferring
+          if ( channel[0].tx_state == TxState::Idle ) {
+            metrics.tx_counts.deferred[0]++;
+            metrics.tx_counts.deferred[1]++;
+            metrics.tx_counts.deferred[2]++;
+            metrics.tx_counts.deferred[3]++;
+            channel[0].tx_state = TxState::Deferred;
+          }
+
+          return;
+        }
+      }
+    }
 
     // ensure that all channels are duplicates of 0
     // TODO: a bit expensive?
@@ -522,14 +550,14 @@ bool recentByteActivity( int which ) {
   if ( which < 0 || which > 3 ) return false;
 
   uint32_t dt = calcByteDeltaTime( which );
-  
+
   uint32_t threshold = (uint32_t)config.tx[which].defer_multi;
 
   // scale for microseconds
   threshold *= 1000;
 
   // If defer_multi is set to 0, then this
-  // will always be false disabling the 
+  // will always be false disabling the
   // defer functionality
   return ( dt < threshold );
 }
@@ -549,18 +577,32 @@ void handleTx( int which ) {
 
   if ( config.tx[which].len == 0 ) return;
 
-  // if defer_multi > 0, performs check
-  if ( recentByteActivity(which) ) return;
 
-  if ( config.rx[which].flags.bits.overrun ) {
-    if ( parser[which].isDecoding() ) return;
-  }
 
   // Check if it is time to transmit.
   uint32_t dt_ms;
   dt_ms = millis() - metrics.tx_timings.last_ts_ms[which];
 
   if ( dt_ms > config.tx[which].interval_ms ) {
+
+    // if defer_multi > 0, performs check
+    if ( recentByteActivity(which) ) {
+      if ( channel[which].tx_state == TxState::Idle ) {
+        metrics.tx_counts.deferred[which]++;
+        channel[which].tx_state = TxState::Deferred;
+      }
+      return;
+    }
+
+    if ( config.rx[which].flags.bits.overrun ) {
+      if ( parser[which].isDecoding() ) {
+        if ( channel[which].tx_state == TxState::Idle ) {
+          metrics.tx_counts.deferred[which]++;
+          channel[which].tx_state = TxState::Deferred;
+        }
+        return;
+      }
+    }
 
     // start the send process, this will also
     // set things up to obstruct another call to this
@@ -666,7 +708,7 @@ void handleI2cFlags() {
     config.tx[0].interval_ms = getNewTxInterval(0);
     i2c_flag_set_tx_0 = false;
     i2c_tx_len[0] = 0;
-    
+
   }
 
   if ( i2c_flag_set_tx_1 ) {
@@ -681,7 +723,7 @@ void handleI2cFlags() {
     config.tx[2].interval_ms = getNewTxInterval(2);
     i2c_flag_set_tx_2 = false;
     i2c_tx_len[2] = 0;
-    
+
   }
 
   if ( i2c_flag_set_tx_3 ) {
@@ -689,7 +731,7 @@ void handleI2cFlags() {
     config.tx[3].len = parser[3].formatIRMessage( (uint8_t*)config.tx_buf[3], (uint8_t*)i2c_buf[3], i2c_tx_len[3] );
     config.tx[3].interval_ms = getNewTxInterval(3);
     i2c_flag_set_tx_3 = false;
-    i2c_tx_len[3] = 0;    
+    i2c_tx_len[3] = 0;
   }
 
   if ( i2c_flag_set_tx_all ) {
