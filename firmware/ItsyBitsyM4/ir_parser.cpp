@@ -89,6 +89,13 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
     // Read length (RAW, never escaped)
     if (parser_state == RX_WAIT_LEN) {
 
+      
+      // Drop the 2 msb, as we are only 
+      // interested in values 1-32?
+      //  7   6  5  4 3 2 1 0
+      // 128 64 32 16 8 4 2 1
+      //uint8_t b_masked = b & 0b0011111;
+
       if ( b == 0 || b > MAX_MSG ) {
 
         reset();

@@ -31,9 +31,6 @@ UartChannel channel[4] = {
 
 
 // To "rename" the built-in Serial1 for readability.
-
-//Uart& port_D1_D0 = Serial1;
-
 Uart port_D1_D0(&sercom3, 0, 1, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 
 // UART2: A4 TX / A1 RX  -> SERCOM0
