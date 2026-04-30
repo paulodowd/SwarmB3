@@ -289,10 +289,10 @@ static inline void countFrameError(Sercom *hw, volatile uint32_t &counter) {
 void resetAllFrameErrorCounts() {
   noInterrupts();
   //  uart1_frame_errors = 0;
-  channel[0].frame_errors = 0;
-  channel[1].frame_errors = 0;
-  channel[2].frame_errors = 0;
-  channel[3].frame_errors = 0;
+  *(channel[0].frame_errors) = 0;
+  *(channel[1].frame_errors) = 0;
+  *(channel[2].frame_errors) = 0;
+  *(channel[3].frame_errors) = 0;
 
   interrupts();
 }
@@ -465,23 +465,23 @@ void enableSercomTx(Sercom* hw) {
 
 
 void SERCOM3_0_Handler() {
-  countFrameError( SERCOM0, port_D1_D0_frame_errors);
+  countFrameError( SERCOM3, port_D1_D0_frame_errors);
   port_D1_D0.IrqHandler();
   //handleTxCompleteInterrupt( channel[3] );
 
 }
 void SERCOM3_1_Handler() {
-  countFrameError( SERCOM0, port_D1_D0_frame_errors);
+  countFrameError( SERCOM3, port_D1_D0_frame_errors);
   port_D1_D0.IrqHandler();
   //handleTxCompleteInterrupt( channel[3] );
 }
 void SERCOM3_2_Handler() {
-  countFrameError( SERCOM0, port_D1_D0_frame_errors);
+  countFrameError( SERCOM3, port_D1_D0_frame_errors);
   port_D1_D0.IrqHandler();
   //handleTxCompleteInterrupt( channel[3] );
 }
 void SERCOM3_3_Handler() {
-  countFrameError( SERCOM0, port_D1_D0_frame_errors);
+  countFrameError( SERCOM3, port_D1_D0_frame_errors);
   port_D1_D0.IrqHandler();
   //handleTxCompleteInterrupt( channel[3] );
 }

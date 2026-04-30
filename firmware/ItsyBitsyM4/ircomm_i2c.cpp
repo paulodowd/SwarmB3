@@ -5,7 +5,7 @@
    where the configuration of the board is available.
 
 */
-
+#include "sercom_funcs.h"
 #include "ircomm_i2c.h"
 #include "ir_parser.h"
 
@@ -65,6 +65,14 @@ void i2cClearRxActivityBit( int which ) {
 void i2cClearStatusBits() {
   config.status = 0;
   return;
+}
+
+void i2cUpdateFrameErrors() {
+  metrics.frame_errors.rx[0] = getFrameErrorCount(channel[0]);
+  metrics.frame_errors.rx[1] = getFrameErrorCount(channel[1]);
+  metrics.frame_errors.rx[2] = getFrameErrorCount(channel[2]);
+  metrics.frame_errors.rx[3] = getFrameErrorCount(channel[3]);
+  
 }
 
 
@@ -149,7 +157,7 @@ void i2c_receive( int len ) {
     // START OF MULTI-BYTE RECEIVES
     // check which context we are receiving in
   } else if ( last_mode == MODE_SET_MSG_0 ) {
-
+    
     Wire.readBytes( (uint8_t*)i2c_buf[0], len );
     i2c_tx_len[0] = len;
     i2c_flag_set_tx_0 = true;
@@ -329,6 +337,9 @@ void i2c_request() {
       Wire.write( (uint8_t*)&metrics.crc, sizeof( metrics.crc) );
       break;
     case  MODE_REPORT_FRAME_ERRS:
+      // Need to transfer frame errors from channels into
+      // data struct.
+      i2cUpdateFrameErrors();
       Wire.write( (uint8_t*)&metrics.frame_errors, sizeof( metrics.frame_errors) );
       break;
     case  MODE_REPORT_ERRORS:

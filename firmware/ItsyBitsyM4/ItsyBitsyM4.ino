@@ -1,7 +1,4 @@
 /* To do:
-    - implement i2c receive/request calls.
-      - decide if we're going to mutex
-      - remember to populate frame errors
 */
 
 
@@ -29,9 +26,13 @@
 
 void setup() {
 
-    Serial.begin(115200);
-  //  while (!Serial);
-  //  Serial.println("Reset");
+  Serial.begin(115200);
+//  while (!Serial);
+//  Serial.println("Reset");
+
+
+  randomSeed( generateRandomSeed() );
+
 
   pinMode( DEMOD1_EN_PIN, OUTPUT);
   pinMode( DEMOD2_EN_PIN, OUTPUT);
@@ -68,12 +69,29 @@ void setup() {
   Wire.begin(IRCOMM_I2C_ADDR);
   Wire.onReceive( i2c_receive );
   Wire.onRequest( i2c_request );
+ 
 
-//  setTestMessage();
-  //    Serial.println("Setup complete");
+  //  setTestMessage();
+      Serial.println("Setup complete");
+}
+
+uint32_t generateRandomSeed() {
+  uint32_t seed = 0x00000000;
+  pinMode(A3, INPUT);
+
+  // Generate an unsigned long as a seed by reading 
+  // the lsb of an analogRead.
+  for( int i = 0; i < 32; i++ ) {
+    uint32_t sample = (uint32_t)analogRead(A3);
+    sample = (sample & 0x00000001) << i;
+    seed |= sample;
+    delay(1);
+  }
+  return seed;
 }
 
 void setTestMessage() {
+
   for ( int i = 0; i < 4; i++ ) {
     char msg[32];
     memset( (char*)msg, 0, sizeof( msg ));
@@ -86,9 +104,6 @@ void setTestMessage() {
 
 
 void loop() {
-
-  
-
   handleI2cFlags();
   handleMsgParsing();
   handleDemodulatorSaturation();

@@ -41,6 +41,7 @@ void i2cClearStatusBits();
 void i2cClearMsgStatusBit( int which );
 void i2cSetRxActivityBit( int which );
 void i2cClearRxActivityBit( int which );
+void i2cUpdateFrameErrors();
 void i2cInitState();
 void i2c_receive(int len);
 void i2c_request();
