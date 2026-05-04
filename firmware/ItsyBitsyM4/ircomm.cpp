@@ -124,6 +124,9 @@ void triggerTx( int which ) {
 
   channel[which].tx_state = TxState::Sending;
 
+  // clear csma multiplier
+  config.tx[which].csma_multi = 0;
+
   // First, if the user has set a preamble we load this
   // into the arduino serial buffer.  For this device
   // (ItsyBitsy M4) I've verified that 349 byte are
@@ -469,6 +472,33 @@ void handleBearingEstimation() {
   }
 }
 
+
+uint32_t getTransmissionLength( int which ) {
+
+  if ( which < 0 || which > 3 ) return 0;
+
+  uint32_t total_bytes;
+  total_bytes = (uint32_t)config.tx[which].len;
+  total_bytes *= (uint32_t)config.tx[which].repeat;
+  total_bytes += (uint32_t)config.tx[which].preamble_repeat;
+  return total_bytes;
+}
+
+// For CSMA/CA back-off, we extend the current tx interval
+void extendTxIntervalCSMA(int which) {
+  if ( which < 0 || which > 3 ) return;
+
+  uint32_t extension_ms;
+  extension_ms = getTransmissionLength(which);
+  extension_ms *= (uint32_t)config.tx[which].csma_multi;
+  extension_ms = (uint32_t)random(0, extension_ms);
+  config.tx[which].interval_ms += extension_ms;
+
+  return;
+
+}
+
+
 void handleTxBroadcast() {
 
   if ( config.tx[0].base_ms == 0 ) return;
@@ -487,21 +517,40 @@ void handleTxBroadcast() {
     // If defer_multi is set, then any activity on
     // a receiver within the threshold will cancel
     // the send process.
+    bool defer = false;
     for ( int i = 0; i < 4; i++ ) {
       if ( recentByteActivity(i) ) {
-
-        // Use tx state to count only the first
-        // occuring instance of deferring
-        if ( channel[0].tx_state == TxState::Idle ) {
-          metrics.tx_counts.deferred[0]++;
-          metrics.tx_counts.deferred[1]++;
-          metrics.tx_counts.deferred[2]++;
-          metrics.tx_counts.deferred[3]++;
-          channel[0].tx_state = TxState::Deferred;
-        }
-
-        return;
+        defer = true;
       }
+    }
+    if ( defer ) {
+      // Use tx state to count only the first
+      // occuring instance of deferring
+      if ( channel[0].tx_state == TxState::Idle ) {
+        metrics.tx_counts.deferred[0]++;
+        metrics.tx_counts.deferred[1]++;
+        metrics.tx_counts.deferred[2]++;
+        metrics.tx_counts.deferred[3]++;
+        channel[0].tx_state = TxState::Deferred;
+
+        config.tx[0].csma_multi = 1;
+        // previously deffered.
+      } else if ( channel[0].tx_state  == TxState::Deferred ) {
+
+        // exponentially increase the potential
+        // csma back-off
+        if ( !(config.tx[0].csma_multi & 0b10000000) ) {
+          config.tx[0].csma_multi = config.tx[0].csma_multi << 1;
+        }
+      }
+
+      extendTxIntervalCSMA(0);
+      return;
+    }
+
+
+
+    for ( int i = 0; i < 4; i++ ) {
 
       // Abort a transmit if any receiver is
       // configured to overrun and is currently
@@ -510,13 +559,13 @@ void handleTxBroadcast() {
         if ( parser[i].isDecoding() ) {
           // Use tx state to count only the first
           // occuring instance of deferring
-          if ( channel[0].tx_state == TxState::Idle ) {
-            metrics.tx_counts.deferred[0]++;
-            metrics.tx_counts.deferred[1]++;
-            metrics.tx_counts.deferred[2]++;
-            metrics.tx_counts.deferred[3]++;
-            channel[0].tx_state = TxState::Deferred;
-          }
+          //          if ( channel[0].tx_state == TxState::Idle ) {
+          //            metrics.tx_counts.deferred[0]++;
+          //            metrics.tx_counts.deferred[1]++;
+          //            metrics.tx_counts.deferred[2]++;
+          //            metrics.tx_counts.deferred[3]++;
+          //            channel[0].tx_state = TxState::Deferred;
+          //          }
 
           return;
         }
@@ -590,16 +639,31 @@ void handleTx( int which ) {
       if ( channel[which].tx_state == TxState::Idle ) {
         metrics.tx_counts.deferred[which]++;
         channel[which].tx_state = TxState::Deferred;
+        config.tx[which].csma_multi = 1;
+
+
+        // previously deffered.
+      } else if ( channel[which].tx_state  == TxState::Deferred ) {
+
+        // exponentially increase the potential
+        // csma back-off
+        if ( !(config.tx[which].csma_multi & 0b10000000) ) {
+          config.tx[which].csma_multi = config.tx[which].csma_multi << 1;
+        }
       }
+
+      extendTxIntervalCSMA(which);
+
       return;
     }
 
+
     if ( config.rx[which].flags.bits.overrun ) {
       if ( parser[which].isDecoding() ) {
-        if ( channel[which].tx_state == TxState::Idle ) {
-          metrics.tx_counts.deferred[which]++;
-          channel[which].tx_state = TxState::Deferred;
-        }
+        //        if ( channel[which].tx_state == TxState::Idle ) {
+        //          metrics.tx_counts.deferred[which]++;
+        //          channel[which].tx_state = TxState::Deferred;
+        //        }
         return;
       }
     }
@@ -614,6 +678,7 @@ void handleTx( int which ) {
     config.tx[which].interval_ms = getNewTxInterval( which );
   }
 }
+
 
 // Returns an new timing interval from a config specified
 // by which.
@@ -633,9 +698,9 @@ uint32_t getNewTxInterval( int which ) {
   // interval
   if ( config.tx[which].predict_multi > 0 ) {
     uint32_t total_bytes;
-    total_bytes = (uint32_t)config.tx[which].len;
-    total_bytes *= (uint32_t)config.tx[which].repeat;
-    total_bytes += (uint32_t)config.tx[which].preamble_repeat;
+    total_bytes = getTransmissionLength(which);
+
+    // scale by requested config
     total_bytes *= (uint32_t)config.tx[which].predict_multi;
     interval_ms = total_bytes;
   }

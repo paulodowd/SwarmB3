@@ -211,6 +211,7 @@ typedef struct {      // total = 17 bytes
   uint32_t interval_ms;       // 4: periodic:  current ms period to send messages
   uint32_t base_ms;           // 4: min tx period allowable
   uint8_t  interval_mod;
+  uint8_t  csma_multi;
   uint8_t  len;               // 1: how long is the message to transmit?
 } ir_tx_params_t;
 
