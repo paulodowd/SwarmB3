@@ -145,7 +145,7 @@ void triggerTx( int which ) {
   // the buffer with Serial.write(), which will block until
   // the data is loaded into the buffer.
   tx_repeat_count[which] = config.tx[which].repeat;
-
+  
   attemptMsgWriteToSerialBuffer( which );
 
   // We may still have repeated transmissions to make
@@ -188,7 +188,7 @@ bool attemptMsgWriteToSerialBuffer( int which ) {
 
     action = true;
   }
-
+  
   return action;
 }
 
@@ -197,7 +197,9 @@ bool updateTx( int which ) {
 
 
   // Already complete? Nothing to do.
-  if ( channel[which].tx_state != TxState::Sending ) return true;
+  if ( channel[which].tx_state != TxState::Sending ) {
+    return true;
+  }
 
   // If we need to progress a repeated transmission that
   // didn't fit into the Serial buffer before
@@ -523,6 +525,7 @@ void handleTxBroadcast() {
         defer = true;
       }
     }
+    
     if ( defer ) {
       // Use tx state to count only the first
       // occuring instance of deferring
@@ -534,6 +537,7 @@ void handleTxBroadcast() {
         channel[0].tx_state = TxState::Deferred;
 
         config.tx[0].csma_multi = 1;
+        
         // previously deffered.
       } else if ( channel[0].tx_state  == TxState::Deferred ) {
 
@@ -550,13 +554,16 @@ void handleTxBroadcast() {
 
 
 
+    // Abort a transmit if any receiver is
+    // configured to overrun and is currently
+    // receiving a message
     for ( int i = 0; i < 4; i++ ) {
 
-      // Abort a transmit if any receiver is
-      // configured to overrun and is currently
-      // receiving a message
       if ( config.rx[i].flags.bits.overrun ) {
         if ( parser[i].isDecoding() ) {
+
+          // Paul: 10/05/26: I don't think we should log
+          //       an overrun as deferred.
           // Use tx state to count only the first
           // occuring instance of deferring
           //          if ( channel[0].tx_state == TxState::Idle ) {
@@ -572,16 +579,21 @@ void handleTxBroadcast() {
       }
     }
 
-    // ensure that all channels are duplicates of 0
-    // TODO: a bit expensive?
-    for ( int i = 1; i < 3; i++ ) {
+    // ensure that all channels are duplicates of tx 0
+    // I feel like this is a little expensive, but when I 
+    // measure the elapsed time it takes 12microseconds, 
+    // which shouldn't impact the overall performance of 
+    // the board. 
+    for ( int i = 1; i < 4; i++ ) {
       memcpy( (void*)&config.tx[i], (void*)&config.tx[0], sizeof( config.tx[0] ));
       memcpy( (void*)config.tx_buf[i], (void*)config.tx_buf[0], sizeof( config.tx_buf[0] ));
     }
 
+
+    
     // configure next interval from channel 0
     uint32_t new_interval = getNewTxInterval(0);
-
+    
     // Start messaging across all channels
     for ( int i = 0; i < 4; i++ ) {
 
@@ -594,6 +606,21 @@ void handleTxBroadcast() {
     }
   }
 }
+
+
+void printTxSettings( int which ) {
+  Serial.print("Tx "); Serial.print( which ); Serial.println("Settings:");
+  Serial.print(" - Repeat: "); Serial.println( config.tx[which].repeat );
+  Serial.print(" - P Multi: "); Serial.println( config.tx[which].predict_multi );
+  Serial.print(" - D Multi: "); Serial.println( config.tx[which].defer_multi );
+  Serial.print(" - P Repeat: "); Serial.println( config.tx[which].preamble_repeat );
+  Serial.print(" - Interval ms: "); Serial.println( config.tx[which].interval_ms );
+  Serial.print(" - Base ms: "); Serial.println( config.tx[which].base_ms );
+  Serial.print(" - Interval mod: "); Serial.println( config.tx[which].interval_mod);
+  Serial.print(" - CSMA Multi: "); Serial.println( config.tx[which].csma_multi );
+  Serial.print(" - Len: "); Serial.println( config.tx[which].len );
+}
+
 
 bool recentByteActivity( int which ) {
   if ( which < 0 || which > 3 ) return false;
@@ -736,9 +763,11 @@ void handleTransmit() {
     // If we're in the middle of a send on any
     // channel, abort
     for ( int i = 0; i < 4; i++ ) {
-      if ( channel[i].tx_state == TxState::Sending ) return;
+      if ( channel[i].tx_state == TxState::Sending ) {
+        return;
+      }
     }
-
+    
     // Else, hand over this operation
     handleTxBroadcast();
 

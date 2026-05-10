@@ -27,6 +27,8 @@
 void setup() {
 
   Serial.begin(115200);
+
+// Paul: debugging 10/05/26
 //  while (!Serial);
 //  Serial.println("Reset");
 
@@ -69,19 +71,25 @@ void setup() {
   Wire.begin(IRCOMM_I2C_ADDR);
   Wire.onReceive( i2c_receive );
   Wire.onRequest( i2c_request );
- 
 
-  //  setTestMessage();
-      Serial.println("Setup complete");
+//  // Paul: debugging 10/05/26
+//  for ( int i = 0; i < 4; i++ ) {
+//    config.tx[0].repeat = UINT32_MAX;
+//    config.tx[0].preamble_repeat = 0;
+//  }
+//  config.general.flags.bits.broadcast = 1;
+//  setTestMessage();
+//  Serial.println("Setup complete");
+
 }
 
 uint32_t generateRandomSeed() {
   uint32_t seed = 0x00000000;
   pinMode(A3, INPUT);
 
-  // Generate an unsigned long as a seed by reading 
+  // Generate an unsigned long as a seed by reading
   // the lsb of an analogRead.
-  for( int i = 0; i < 32; i++ ) {
+  for ( int i = 0; i < 32; i++ ) {
     uint32_t sample = (uint32_t)analogRead(A3);
     sample = (sample & 0x00000001) << i;
     seed |= sample;

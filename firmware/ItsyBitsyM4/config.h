@@ -14,8 +14,8 @@
  * General (top-level) config
  */
 #define BAUD                    9600
-#define BROADCAST               false
-#define BIDIRECTIONAL           false 
+#define BROADCAST               0
+#define BIDIRECTIONAL           0 
 #define BEARING_UPDATE_US       10000 // 100ms
 #define BEARING_ALPHA           0.25  // 
 #define TX_PREAMBLE_BYTE        0x55 // 0b01010101, 'U'
@@ -41,6 +41,8 @@
 #define TX_INTERVAL_MS          100
 #define TX_BASE_MS              100
 #define TX_LEN                  0
+
+
 
 
 

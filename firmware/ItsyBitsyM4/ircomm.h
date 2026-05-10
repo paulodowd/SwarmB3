@@ -41,5 +41,7 @@ void      handleTx( int which );
 uint32_t  getNewTxInterval( int which );
 void      handleTransmit();
 void      printDemodStatus();
+void printTxSettings( int which );
+
 
 #endif

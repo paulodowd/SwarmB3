@@ -230,7 +230,7 @@ typedef struct {       // total = 8 bytes.
   uint8_t   timeout_multi;      //  1: If we haven't received a consecutive byte, timeout
   uint16_t  saturation_us;      //  2: Rx seems to saturate, watch for 0 byte activity.
   uint16_t  desaturation_us;    //  2: How long to desaturation for?
-} ir_rx_params_t;
+} ir_rx_params_t;    
 
 typedef struct {
   union {                           // 1 bytes
@@ -262,7 +262,7 @@ typedef struct {
   ir_sensors_t      sensors;
   ir_tx_timings_t   tx_timings;
   ir_tx_counts_t    tx_counts;
-} ir_metrics_t;
+} ir_metrics_t;    
 
 // On this new board, each rx demodulator and
 // pair of IR LEDs are attached to independent
