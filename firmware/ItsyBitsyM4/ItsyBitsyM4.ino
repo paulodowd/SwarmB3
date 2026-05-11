@@ -28,7 +28,7 @@ void setup() {
 
   Serial.begin(115200);
 
-// Paul: debugging 10/05/26
+  // Paul: debugging 10/05/26
 //  while (!Serial);
 //  Serial.println("Reset");
 
@@ -72,14 +72,14 @@ void setup() {
   Wire.onReceive( i2c_receive );
   Wire.onRequest( i2c_request );
 
-//  // Paul: debugging 10/05/26
+  //  // Paul: debugging 10/05/26
 //  for ( int i = 0; i < 4; i++ ) {
 //    config.tx[0].repeat = UINT32_MAX;
 //    config.tx[0].preamble_repeat = 0;
 //  }
 //  config.general.flags.bits.broadcast = 1;
-//  setTestMessage();
-//  Serial.println("Setup complete");
+//  setTestMessage(32);
+  //  Serial.println("Setup complete");
 
 }
 
@@ -98,15 +98,23 @@ uint32_t generateRandomSeed() {
   return seed;
 }
 
-void setTestMessage() {
+void setTestMessage(int len) {
 
+  char msg[34];
+  memset( (char*)msg, 0, sizeof( msg ));
+  for ( int j = 0; j < len; j++ ) {
+
+    char c;
+    do {
+      c = (char)random(0, 255);
+    } while ( c == '~' || c == '^' );
+    msg[j] = c;
+  }
   for ( int i = 0; i < 4; i++ ) {
-    char msg[32];
-    memset( (char*)msg, 0, sizeof( msg ));
     memset( (uint8_t*)config.tx_buf[i], 0, sizeof( config.tx_buf[i] ));
-    sprintf((char*)msg, "test %d, %lu", i, micros() );
     config.tx[i].len = parser[i].formatIRMessage( (uint8_t*)config.tx_buf[i], (uint8_t*)msg, strlen(msg));
   }
+
 
 }
 

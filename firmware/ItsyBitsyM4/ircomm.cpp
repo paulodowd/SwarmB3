@@ -145,9 +145,9 @@ void triggerTx( int which ) {
   // the buffer with Serial.write(), which will block until
   // the data is loaded into the buffer.
   tx_repeat_count[which] = config.tx[which].repeat;
-  
-  attemptMsgWriteToSerialBuffer( which );
 
+  attemptMsgWriteToSerialBuffer( which );
+  
   // We may still have repeated transmissions to make
   // but these will be handled by the non-blocking
   // updateTx function.
@@ -174,7 +174,14 @@ bool attemptMsgWriteToSerialBuffer( int which ) {
   // Next: check if there is still space to add in the
   // current message stored in tx_buf via config.tx[].len
   int bytes = channel[which].port->availableForWrite();
-  while ( bytes > config.tx[which].len && tx_repeat_count[which] > 0 ) {
+
+  // This was origionally while(), but I found that filling the UART
+  // buffer for each SERCOM was actually quite time expensive.
+  // I checked the general full board update time and the slowest was
+  // about 24us.  Therefore, I think writing just 1 copy of the 
+  // message into the buffer is fine, because we'll get around quick
+  // enough to fill it up again.
+  if ( (bytes > config.tx[which].len) && (tx_repeat_count[which] > 0 ) ) {
 
     // We have enough space, load in the message.
     channel[which].port->write( (uint8_t*)config.tx_buf[which], config.tx[which].len);
@@ -192,6 +199,7 @@ bool attemptMsgWriteToSerialBuffer( int which ) {
   return action;
 }
 
+static unsigned long last_t;
 bool updateTx( int which ) {
   if ( which < 0 || which > 3 ) return false;
 
@@ -211,6 +219,7 @@ bool updateTx( int which ) {
     // not complete.
     return false;
   }
+  
 
 
   // If here, we're not attempting to load in more
@@ -514,6 +523,8 @@ void handleTxBroadcast() {
   dt_ms = millis() - metrics.tx_timings.last_ts_ms[0];
 
   // Time to send?
+
+  
   if ( dt_ms > config.tx[0].interval_ms ) {
 
     // If defer_multi is set, then any activity on
@@ -593,18 +604,21 @@ void handleTxBroadcast() {
     
     // configure next interval from channel 0
     uint32_t new_interval = getNewTxInterval(0);
-    
-    // Start messaging across all channels
-    for ( int i = 0; i < 4; i++ ) {
 
+    // Start messaging across all channels
+    noInterrupts();
+    for ( int i = 0; i < 4; i++ ) {
       // start the send process, this will also
       // set things up to obstruct another call to this
       // function.
       triggerTx(i);
-
       config.tx[i].interval_ms = new_interval;
     }
+    interrupts();
+
+
   }
+  
 }
 
 
