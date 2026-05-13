@@ -63,6 +63,7 @@ void resetFrameErrorCount( UartChannel& ch );
 uint32_t getFrameErrorCount( UartChannel& ch );
 void enableSercomTx(Sercom* hw);
 void disableSercomTx(Sercom* hw);
+bool hasSercomSynchronised(Sercom* hw);
 bool isUartTxComplete( const UartChannel& ch );
 bool isUartTxComplete(Sercom* hw);
 void waitForTxComplete(Sercom* hw);

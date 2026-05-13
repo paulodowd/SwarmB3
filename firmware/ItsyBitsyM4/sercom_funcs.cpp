@@ -447,8 +447,13 @@ void enableSercomTx(Sercom* hw) {
   hw->USART.CTRLB.bit.TXEN = 1;
 
   // Wait for synchronization
-  while (hw->USART.SYNCBUSY.bit.CTRLB) {
-  }
+//  while (hw->USART.SYNCBUSY.bit.CTRLB) {
+//  }
+}
+
+bool hasSercomSynchronised( Sercom* hw ) {
+  // check "busy" status, return opposite
+  return !(hw->USART.SYNCBUSY.bit.CTRLB);
 }
 
 

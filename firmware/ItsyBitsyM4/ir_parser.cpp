@@ -86,7 +86,8 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
       return status;
     }
 
-    // Read length (RAW, never escaped)
+    // If waiting for length, this byte should be
+    // a valid payload length value.
     if (parser_state == RX_WAIT_LEN) {
 
       
@@ -94,9 +95,11 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
       // interested in values 1-32?
       //  7   6  5  4 3 2 1 0
       // 128 64 32 16 8 4 2 1
-      //uint8_t b_masked = b & 0b0011111;
+      uint8_t b_masked = b & 0b0011111;
 
-      if ( b == 0 || b > MAX_MSG ) {
+      // A valid payload (unescaped) is 32 bytes plus
+      // two bytes for CRC 
+      if ( b_masked == 0 || b_masked > (MAX_MSG + NUM_CRC_BYTES) ) {
 
         reset();
 
@@ -108,7 +111,7 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
       // Add 2 because we also need to read in
       // the two CRC bytes after the message
       // payload.
-      enc_remain = b + NUM_CRC_BYTES;
+      enc_remain = b;
 
       //port.print("set encRemain to "); port.println( encRemain );
       parser_state = RX_READ_ENC;
@@ -162,17 +165,21 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
       }
 
-      dec_buf[dec_pos++] = b;
+      dec_buf[ dec_pos ] = b;
+      dec_pos++;
       enc_remain--;
 
       // Frame complete?
       if (enc_remain == 0) {
 
 
-        uint8_t payload_len = dec_pos - NUM_CRC_BYTES;
+        uint8_t payload_len = dec_pos;
 
-        uint16_t recv_CRC = mergeCRC16( dec_buf[payload_len], dec_buf[payload_len + 1] );
-        uint16_t calc_CRC = CRC16( dec_buf, payload_len);
+        // Restore 16bit CRC from last two bytes of unescaped payload 
+        uint16_t recv_CRC = mergeCRC16( dec_buf[payload_len -2 ], dec_buf[payload_len-1] );
+
+        // Construct received 16bit CRC from unescaped payload without CRC bytes
+        uint16_t calc_CRC = CRC16( dec_buf, payload_len - NUM_CRC_BYTES);
 
         if (recv_CRC == calc_CRC) {
           memset( msg, 0, sizeof( msg ));
@@ -183,7 +190,7 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
           //                    digitalWrite( 13, HIGH );
 
           uint8_t total_decoded;
-          total_decoded = NUM_HEADER_BYTES + msg_len + NUM_CRC_BYTES + esc_count;
+          total_decoded = NUM_HEADER_BYTES + msg_len + esc_count;
           status.bytes = total_decoded;
           status.error = NO_ERROR;
           return status;
@@ -242,11 +249,14 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
 
 int IRParser_c::formatIRMessage( uint8_t * tx_buf, uint8_t * msg, byte len ) {
+  
   if ( len  > MAX_MSG ) {
 
     // ERROR, formatted messsage would be too long
     return -1;
   }
+
+//  Serial.print("To encode: "); Serial.print( (char*)msg); Serial.print(" len: "); Serial.println(len);
 
   if ( tx_buf == NULL || msg == NULL || len == 0 ) {
 
@@ -268,8 +278,8 @@ int IRParser_c::formatIRMessage( uint8_t * tx_buf, uint8_t * msg, byte len ) {
   // start token
   tx_buf[0] = START_BYTE;
 
-  // save the original size of the payload
-  tx_buf[1] = len;
+  // save the unescaped size of the payload
+  tx_buf[1] = len + NUM_CRC_BYTES;
 
   // copy the message into tx_buf
   // do this byte-by-byte to add in escape
@@ -282,13 +292,41 @@ int IRParser_c::formatIRMessage( uint8_t * tx_buf, uint8_t * msg, byte len ) {
 
 
   // Now append the two CRC bytes
-  tx_buf[ encoded_len ] = ub;
-  tx_buf[ encoded_len + 1 ] = lb;
+  encodeEscape( ub, tx_buf, encoded_len );
+  encodeEscape( lb, tx_buf, encoded_len );
+  //tx_buf[ encoded_len ] = ub;
+  //tx_buf[ encoded_len + 1 ] = lb;
 
-  // Report final length
-  return (encoded_len + 2);
+//  Serial.println("Encoded:");
+//  for( int i = 0; i < encoded_len; i++ ) {
+//    Serial.print("Tx_buf["); Serial.print(i);Serial.print("): "); Serial.print( (char)tx_buf[i]); Serial.print(" Dec: "); Serial.println( tx_buf[i] );
+//  }
+//  Serial.print("Encoded length: "); Serial.println( encoded_len );
+
+  // Report final encoded length
+  return (encoded_len);
 }
 
+// Escape only '~' and '^'
+bool IRParser_c::mustEscape(uint8_t byte_in ) {
+  return byte_in == START_BYTE || byte_in == ESC_BYTE;
+}
+
+
+void IRParser_c::encodeEscape(uint8_t byte_in, uint8_t* buf, uint8_t& pos) {
+
+  if ( mustEscape(byte_in) ) {
+
+    buf[pos++] = ESC_BYTE;
+    buf[pos++] = (uint8_t)( byte_in ^ XOR_MASK );
+
+
+  } else {
+
+    buf[pos++] = byte_in;
+
+  }
+}
 
 
 /*
@@ -364,25 +402,4 @@ uint16_t IRParser_c::CRC16( byte * bytes, byte len ) {
   }
 
   return crc;
-}
-
-// Escape only '~' and '^'
-bool IRParser_c::mustEscape(uint8_t byte_in ) {
-  return byte_in == START_BYTE || byte_in == ESC_BYTE;
-}
-
-
-void IRParser_c::encodeEscape(uint8_t byte_in, uint8_t* buf, uint8_t& pos) {
-
-  if ( mustEscape(byte_in) ) {
-
-    buf[pos++] = ESC_BYTE;
-    buf[pos++] = (uint8_t)( byte_in ^ XOR_MASK );
-
-
-  } else {
-
-    buf[pos++] = byte_in;
-
-  }
 }

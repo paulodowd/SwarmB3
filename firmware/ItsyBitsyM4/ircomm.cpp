@@ -127,6 +127,7 @@ void triggerTx( int which ) {
   // clear csma multiplier
   config.tx[which].csma_multi = 0;
 
+
   // First, if the user has set a preamble we load this
   // into the arduino serial buffer.  For this device
   // (ItsyBitsy M4) I've verified that 349 byte are
@@ -561,7 +562,7 @@ void handleTxBroadcast() {
 
       extendTxIntervalCSMA(0);
       return;
-    }
+    } 
 
 
 
@@ -599,14 +600,38 @@ void handleTxBroadcast() {
       memcpy( (void*)&config.tx[i], (void*)&config.tx[0], sizeof( config.tx[0] ));
       memcpy( (void*)config.tx_buf[i], (void*)config.tx_buf[0], sizeof( config.tx_buf[0] ));
     }
+    
 
 
+
+    // TODO: I think the below is a bit risky because I'm
+    // disabling the SERCOM tx beneath the arduino serial
+    // abstraction, and I'm not quite sure how that will 
+    // behave.  I've made my best attempt to ensure that
+    // buffers are empty - but I wonder if the 1 byte 
+    // shift register in the SERCOM is going to cause 
+    // unpredictable blocking.  I've tested this in reality
+    // and it seems to remove the frame errors between 
+    // the boundary of pairs of transmitting IR LEDs.
+    // I'll come back to this later.
     
     // configure next interval from channel 0
     uint32_t new_interval = getNewTxInterval(0);
 
-    // Start messaging across all channels
-    noInterrupts();
+    // Make sure that any old transmit has 
+//    // fully finished
+//    for( int i = 0; i < 4; i++ ) {
+//      while( isUartTxComplete( channel[i].hw ) == false ){
+////        Serial.printf("Waiting for Tx%d to clear\n", i );
+//      }
+//    }
+    
+    // Disable all transmitters, so that we can
+    // start transmission at the same time as
+    // nearly as possible
+    for( int i = 0; i < 4; i++ ) disableSercomTx( channel[i].hw );
+
+    // Load buffers
     for ( int i = 0; i < 4; i++ ) {
       // start the send process, this will also
       // set things up to obstruct another call to this
@@ -614,8 +639,12 @@ void handleTxBroadcast() {
       triggerTx(i);
       config.tx[i].interval_ms = new_interval;
     }
-    interrupts();
 
+    // Renable transmit
+    for( int i = 0; i < 4; i++ ) enableSercomTx( channel[i].hw );
+
+    // Wait for sync
+    for( int i = 0; i < 4; i++ ) while( !hasSercomSynchronised( channel[i].hw ) );
 
   }
   

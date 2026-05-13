@@ -14,8 +14,9 @@
 // When we encode a message, the worst case
 // is 32 bytes of payload, and each byte is
 // escaped with a byte. We also need to add
-// the start, length and CRC bytes (+4).
-#define MAX_TX_BUF (MAX_MSG * 2) + 4
+// the start (+1), length (+1) and escaped 
+// CRC bytes (2*2=4). 
+#define MAX_TX_BUF (MAX_MSG * 2) + 6
 
 // This 1 byte struct is used to change the i2c
 // operation.  For example, to reset counts on

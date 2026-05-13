@@ -78,8 +78,8 @@ void setup() {
 //    config.tx[0].preamble_repeat = 0;
 //  }
 //  config.general.flags.bits.broadcast = 1;
-//  setTestMessage(32);
-  //  Serial.println("Setup complete");
+//  setTestMessage(4);
+//    Serial.println("Setup complete");
 
 }
 
