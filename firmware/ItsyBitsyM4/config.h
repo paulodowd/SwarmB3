@@ -14,7 +14,7 @@
  * General (top-level) config
  */
 #define BAUD                    9600
-#define BROADCAST               0
+#define BROADCAST               1
 #define BIDIRECTIONAL           0 
 #define BEARING_UPDATE_US       10000 // 100ms
 #define BEARING_ALPHA           0.25  // 
@@ -26,20 +26,20 @@
  */
 #define RX_OVERRUN              true  // allow for rx message to complete? 
 #define RX_ENABLED              1
-#define RX_TIMEOUT_MULTI        8
+#define RX_TIMEOUT_MULTI        15    // 1200us, 1.2ms
 #define RX_SATURATION_US        8000 // 8ms no bytes
 #define RX_DESATURATION_US      2000 // off for 2ms
 
 /*
  * Config assigned to each transmitter
  */
-#define TX_INTERVAL_MOD         10
+#define TX_INTERVAL_MOD         0
 #define TX_REPEAT               1
 #define TX_PREDICT_MULTI        0
 #define TX_DEFER_MULTI          0
-#define TX_PREAMBLE_REPEAT      4
-#define TX_INTERVAL_MS          100
-#define TX_BASE_MS              100
+#define TX_PREAMBLE_REPEAT      0
+#define TX_INTERVAL_MS          1
+#define TX_BASE_MS              1
 #define TX_LEN                  0
 
 

@@ -278,6 +278,7 @@ void enableDemodulator( int which ) {
   // renable demodulator
   channel[which].demod_state = DemodState::Active;
   digitalWrite( channel[which].demod_pin, HIGH );
+  
 }
 
 bool triggerDemodDesaturation(int which) {
@@ -312,7 +313,7 @@ bool updateDemodDesaturation( int which ) {
     // trigger another desaturation in the next
     // iteration
     setByteTimestamp( which );
-
+    
     return true;
   }
   return false;
@@ -357,6 +358,8 @@ void updateBearing() {
 }
 
 void handleMsgParsing() {
+
+  
   // First, check for new bytes on each of the 4 receivers,
   // logging any metrics/errors and handling a complete message.
   for ( int i = 0; i < 4; i++ ) {
@@ -373,8 +376,9 @@ void handleMsgParsing() {
 
     // timeout_multi is 0:255, and we generally get bytes
     // every 1ms.
-    uint32_t byte_timeout_ms = config.rx[i].timeout_multi;
-    parser_status_t parser_status = parser[i].getNextByte( byte_timeout_ms );
+    uint32_t byte_timeout_us = (uint32_t)config.rx[i].timeout_multi;
+    byte_timeout_us *= 100;
+    parser_status_t parser_status = parser[i].getNextByte( byte_timeout_us );
 
 
     // Log any activity
@@ -417,8 +421,9 @@ void handleMsgParsing() {
 
       // Debug
       //                  Serial.print("Port "); Serial.print(i);
-      //                  Serial.print(" Got message: ");
-      //                  Serial.println( (char*)parser[i].msg);
+//                        Serial.print(" Got message: ");
+//                        Serial.print( (char*)parser[i].msg);
+//                        Serial.print(" ");Serial.println( parser[i].msg_len );
       config.msg_len[i] = parser[i].msg_len;
       parser[i].copyMsg( (uint8_t*)config.msg[i] );
       i2cSetMsgStatusBit( i );
@@ -524,8 +529,6 @@ void handleTxBroadcast() {
   dt_ms = millis() - metrics.tx_timings.last_ts_ms[0];
 
   // Time to send?
-
-  
   if ( dt_ms > config.tx[0].interval_ms ) {
 
     // If defer_multi is set, then any activity on

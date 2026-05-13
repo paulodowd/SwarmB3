@@ -119,11 +119,12 @@ void setTestMessage(int len) {
 }
 
 
+static unsigned long alive_ts;
 void loop() {
+  
   handleI2cFlags();
   handleMsgParsing();
   handleDemodulatorSaturation();
   handleBearingEstimation();
   handleTransmit();
-
 }

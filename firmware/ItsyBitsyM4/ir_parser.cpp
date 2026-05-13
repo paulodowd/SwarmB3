@@ -12,7 +12,7 @@ void IRParser_c::reset() {
   enc_remain  = 0;
   esc_count   = 0;
 
-  timeout_ts  = millis();
+  timeout_ts  = micros();
 
 }
 
@@ -40,12 +40,19 @@ bool IRParser_c::isDecoding() {
   return false;
 }
 
-parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
+parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_us ) {
 
   // Assume no bytes received, no error
   parser_status_t status;
   status.bytes = REPORT_ZERO_BYTES;
   status.error = NO_ERROR;
+
+  // If we're still waiting for the start of a
+  // transmission, we move up our timeout
+  // timestamp.  Otherwise, the time between
+  // bytes will always exceed timeout when
+  // a message starts
+  if ( parser_state == RX_WAIT_START ) timeout_ts = micros();
 
   // Note: not using while.  We don't want to
   // block the code.  Instead, we'll call this
@@ -54,11 +61,11 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
 
     // move the timeout timestamp forwards
-    timeout_ts = millis();
+    timeout_ts = micros();
 
     uint8_t b = (uint8_t)port.read();
 
-//    Serial.println((char)b);
+    //    Serial.println((char)b);
 
     // We're either in WAIT_START or WAIT LEN and
     // get the start byte
@@ -90,16 +97,13 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
     // a valid payload length value.
     if (parser_state == RX_WAIT_LEN) {
 
-      
-      // Drop the 2 msb, as we are only 
-      // interested in values 1-32?
-      //  7   6  5  4 3 2 1 0
-      // 128 64 32 16 8 4 2 1
-      uint8_t b_masked = b & 0b0011111;
+      // top two bits are not used
+      b = b & 0x3F;
 
-      // A valid payload (unescaped) is 32 bytes plus
-      // two bytes for CRC 
-      if ( b_masked == 0 || b_masked > (MAX_MSG + NUM_CRC_BYTES) ) {
+      // A valid payload (unescaped) is max 32 bytes plus
+      // two bytes for CRC.
+      // or min 3 bytes (1 payload 2 crc)
+      if ( b < 3 || b > (MAX_MSG + NUM_CRC_BYTES) ) {
 
         reset();
 
@@ -123,7 +127,7 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
       return status;
     }
 
-    // Only handle escaping INSIDE encoded region
+    // Only handle escaping inside encoded region
     if (parser_state == RX_READ_ENC) {
 
       // Flag to escape next byte on next iteration.
@@ -164,7 +168,7 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
         }
 
       }
-
+      //      Serial.printf("dec pos %d\n", dec_pos );
       dec_buf[ dec_pos ] = b;
       dec_pos++;
       enc_remain--;
@@ -175,32 +179,38 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
         uint8_t payload_len = dec_pos;
 
-        // Restore 16bit CRC from last two bytes of unescaped payload 
-        uint16_t recv_CRC = mergeCRC16( dec_buf[payload_len -2 ], dec_buf[payload_len-1] );
+        // A message of 1 byte will have 2 CRC
+        // protect memory addressing here
+        if ( dec_pos > 2 ) {
 
-        // Construct received 16bit CRC from unescaped payload without CRC bytes
-        uint16_t calc_CRC = CRC16( dec_buf, payload_len - NUM_CRC_BYTES);
+          // Restore 16bit CRC from last two bytes of unescaped payload
+          uint16_t recv_CRC = mergeCRC16( dec_buf[payload_len - 2 ], dec_buf[payload_len - 1] );
 
-        if (recv_CRC == calc_CRC) {
-          memset( msg, 0, sizeof( msg ));
-          memcpy( msg, dec_buf, payload_len);
-          msg_len = payload_len;
-          reset();
+          // Construct received 16bit CRC from unescaped payload without CRC bytes
+          uint16_t calc_CRC = CRC16( dec_buf, payload_len - NUM_CRC_BYTES);
 
-          //                    digitalWrite( 13, HIGH );
 
-          uint8_t total_decoded;
-          total_decoded = NUM_HEADER_BYTES + msg_len + esc_count;
-          status.bytes = total_decoded;
-          status.error = NO_ERROR;
-          return status;
+          if (recv_CRC == calc_CRC) {
 
-        } else {
-          //port.println("Bad CRC");
-          reset();
-          status.bytes = REPORT_ONE_BYTES;
-          status.error = ERR_BAD_CRC;
-          return status;
+            memset( msg, 0, sizeof( msg ));
+            memcpy( msg, dec_buf, payload_len - NUM_CRC_BYTES);
+            msg_len = payload_len - NUM_CRC_BYTES;
+            reset();
+
+            uint8_t total_decoded;
+            total_decoded = NUM_HEADER_BYTES + msg_len + esc_count;
+            //            Serial.printf("total decoded: %d\n", total_decoded);
+            status.bytes = total_decoded;
+            status.error = NO_ERROR;
+            return status;
+
+          } else {
+            //            port.println("Bad CRC");
+            reset();
+            status.bytes = REPORT_ONE_BYTES;
+            status.error = ERR_BAD_CRC;
+            return status;
+          }
         }
       } // if enc_remain == 0 [end of frame]
 
@@ -217,17 +227,15 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
   } // if port.available()
 
-//   If we started to receive a message but we
-//   didn't get any more bytes, indicate the
-//   timeout error.  We also reset the parser
-//   because we need to have consecutive bytes
-//   to get a correct message (CRC).
+  //   If we started to receive a message but we
+  //   didn't get any more bytes, indicate the
+  //   timeout error.  We also reset the parser
+  //   because we need to have consecutive bytes
+  //   to get a correct message (CRC).
   if ( parser_state != RX_WAIT_START ) {
-    if ( byte_timeout_ms > 0 ) {
+    if ( byte_timeout_us > 0 ) {
 
-      // TODO: we know the baudrate, I don't think
-      // we need to pass in byte_timeout_ms here.
-      if ( millis() - timeout_ts > byte_timeout_ms ) {
+      if ( micros() - timeout_ts > byte_timeout_us ) {
         reset();
         status.bytes = REPORT_ZERO_BYTES;
         status.error = ERR_BYTE_TIMEOUT;
@@ -249,14 +257,14 @@ parser_status_t IRParser_c::getNextByte( uint32_t byte_timeout_ms ) {
 
 
 int IRParser_c::formatIRMessage( uint8_t * tx_buf, uint8_t * msg, byte len ) {
-  
+
   if ( len  > MAX_MSG ) {
 
     // ERROR, formatted messsage would be too long
     return -1;
   }
 
-//  Serial.print("To encode: "); Serial.print( (char*)msg); Serial.print(" len: "); Serial.println(len);
+  //  Serial.print("To encode: "); Serial.print( (char*)msg); Serial.print(" len: "); Serial.println(len);
 
   if ( tx_buf == NULL || msg == NULL || len == 0 ) {
 
@@ -297,11 +305,11 @@ int IRParser_c::formatIRMessage( uint8_t * tx_buf, uint8_t * msg, byte len ) {
   //tx_buf[ encoded_len ] = ub;
   //tx_buf[ encoded_len + 1 ] = lb;
 
-//  Serial.println("Encoded:");
-//  for( int i = 0; i < encoded_len; i++ ) {
-//    Serial.print("Tx_buf["); Serial.print(i);Serial.print("): "); Serial.print( (char)tx_buf[i]); Serial.print(" Dec: "); Serial.println( tx_buf[i] );
-//  }
-//  Serial.print("Encoded length: "); Serial.println( encoded_len );
+  //  Serial.println("Encoded:");
+  //  for( int i = 0; i < encoded_len; i++ ) {
+  //    Serial.print("Tx_buf["); Serial.print(i);Serial.print("): "); Serial.print( (char)tx_buf[i]); Serial.print(" Dec: "); Serial.println( tx_buf[i] );
+  //  }
+  //  Serial.print("Encoded length: "); Serial.println( encoded_len );
 
   // Report final encoded length
   return (encoded_len);

@@ -103,8 +103,8 @@ typedef uint8_t ir_status_t;
 // Counts for each type of error
 // per receiver.
 // [ rx ][ error ]
-typedef struct  {  // 32 bytes
-  uint16_t type[4][4];// 4*4 = 16*2bytes
+typedef struct  {  
+  uint16_t type[4][4];
 } ir_errors_t;
 
 // Contains pass/fail count for the
@@ -254,7 +254,7 @@ typedef struct {
   ir_crc_t          crc;
   ir_activity_t     activity;
   ir_saturation_t   saturation;
-  ir_errors_t       errors;
+  ir_errors_t       errors;    // error types for each recevier
   ir_frame_errors_t frame_errors; // this one needs integrating with channel[]
   ir_msg_timings_t  msg_timings;
   ir_byte_timings_t byte_timings;
